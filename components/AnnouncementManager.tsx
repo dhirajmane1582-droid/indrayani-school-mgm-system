@@ -30,6 +30,7 @@ const AnnouncementManager: React.FC<AnnouncementManagerProps> = ({ announcements
           targetClass
       };
       
+      dbService.put('announcements', newNotice).catch(console.error);
       setAnnouncements(prev => [newNotice, ...prev]);
       setTitle('');
       setContent('');

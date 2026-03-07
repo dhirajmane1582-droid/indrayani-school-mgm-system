@@ -177,6 +177,8 @@ const App: React.FC = () => {
           await dbService.putAll(store, localData);
         }
       }
+      // Refresh local state from the newly pushed cloud data
+      await handleSync(true);
     } catch (err: any) {
       console.error("Push failed:", err);
       throw err;

@@ -392,7 +392,20 @@ const StudentManager: React.FC<StudentManagerProps> = ({
       if (importedStudents.length > 0) {
         setStudents(prev => [...prev, ...importedStudents]);
         setUsers(prev => [...prev, ...newUsers]);
-        showToast(`${importedStudents.length} Students Imported. Click Push to sync Cloud!`, "success");
+        
+        // Automatic Cloud Sync for Imported Data
+        setIsSyncing(true);
+        Promise.all([
+            dbService.putAll('students', importedStudents),
+            dbService.putAll('users', newUsers)
+        ]).then(() => {
+            showToast(`${importedStudents.length} Students Imported & Synced!`, "success");
+        }).catch(err => {
+            console.error("Import sync error:", err);
+            showToast("Imported locally, but cloud sync failed.", "error");
+        }).finally(() => {
+            setIsSyncing(false);
+        });
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
     };

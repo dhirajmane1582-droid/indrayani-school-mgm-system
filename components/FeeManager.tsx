@@ -84,6 +84,7 @@ const FeeManager: React.FC<FeeManagerProps> = ({ students, fees, setFees, readOn
       remarks
     };
 
+    dbService.put('fees', newFee).catch(console.error);
     setFees(prev => [newFee, ...prev]);
     setAmount('');
     setRemarks('');

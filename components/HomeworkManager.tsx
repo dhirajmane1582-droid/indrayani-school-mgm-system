@@ -73,12 +73,19 @@ const HomeworkManager: React.FC<HomeworkManagerProps> = ({
     if (!title || !description || !finalSubject) return;
 
     if (editingId) {
-        setHomework(prev => prev.map(h => h.id === editingId ? {
+        const updatedHw = homework.map(h => h.id === editingId ? {
             ...h,
             subject: finalSubject,
             title,
             description
-        } : h));
+        } : h);
+        
+        const editedItem = updatedHw.find(h => h.id === editingId);
+        if (editedItem) {
+            dbService.put('homework', editedItem).catch(console.error);
+        }
+
+        setHomework(updatedHw);
         setEditingId(null);
     } else {
         const newHw: Homework = {
@@ -91,6 +98,7 @@ const HomeworkManager: React.FC<HomeworkManagerProps> = ({
             title,
             description
         };
+        dbService.put('homework', newHw).catch(console.error);
         setHomework(prev => [newHw, ...prev]);
     }
 

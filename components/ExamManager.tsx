@@ -119,11 +119,20 @@ const ExamManager: React.FC<ExamManagerProps> = ({ exams, setExams }) => {
       const sortedTimetable = [...timetable].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       if (activeView === 'edit' && editingExamIds) {
-          setExams(prev => prev.map(e => 
+          const updatedExams = exams.map(e => 
               editingExamIds.includes(e.id) 
               ? { ...e, title, type, timetable: sortedTimetable } 
               : e
-          ));
+          );
+          
+          // Sync updated exams to cloud
+          updatedExams.forEach(e => {
+              if (editingExamIds.includes(e.id)) {
+                  dbService.put('exams', e).catch(console.error);
+              }
+          });
+
+          setExams(updatedExams);
           setSuccessMsg(`Successfully updated "${title}".`);
       } else {
           const newExams: Exam[] = selectedClasses.map(cls => ({
@@ -138,6 +147,10 @@ const ExamManager: React.FC<ExamManagerProps> = ({ exams, setExams }) => {
               activeSubjectIds: undefined,
               customMaxMarks: {}
           }));
+
+          // Sync new exams to cloud
+          newExams.forEach(e => dbService.put('exams', e).catch(console.error));
+
           setExams(prev => [...prev, ...newExams]);
           setSuccessMsg(`Successfully published "${title}" to ${selectedClasses.length} classes.`);
       }
