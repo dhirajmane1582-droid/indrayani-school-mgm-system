@@ -1,0 +1,67 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --header-height: 4rem; /* h-16 = 64px */
+  }
+  @media (min-width: 640px) {
+    :root {
+      --header-height: 5rem; /* h-20 = 80px */
+    }
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 selection:bg-indigo-100 selection:text-indigo-900;
+  }
+  
+  /* Prevent body scroll when modal is open */
+  body.modal-open {
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  input[type="date"] {
+    @apply cursor-pointer;
+  }
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  .glow-indigo {
+    animation: glow-pulse 2.5s infinite ease-in-out;
+  }
+}
+
+@keyframes glow-pulse {
+  0% { box-shadow: 0 0 8px 1px rgba(129, 140, 248, 0.3), 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+  50% { box-shadow: 0 0 22px 6px rgba(129, 140, 248, 0.6), 0 10px 15px -3px rgb(0 0 0 / 0.1); }
+  100% { box-shadow: 0 0 8px 1px rgba(129, 140, 248, 0.3), 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+}
+
+* {
+  @apply transition-colors duration-200;
+}
+
+::selection {
+  @apply bg-indigo-500 text-white;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full hover:bg-slate-400;
+}
