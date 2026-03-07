@@ -23,29 +23,38 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRefreshData }) => {
     setIsUpdating(true);
 
     try {
-        // 1. Check Local Cache First (for speed/offline)
-        let user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+        const cleanUsername = username.trim().toLowerCase();
         
-        // 2. If not found locally, check Cloud directly (Source of Truth)
-        if (!user) {
-            const cloudUser = await dbService.verifyCloudUser(username, password);
-            if (cloudUser) user = cloudUser;
+        // 1. EMERGENCY BYPASS - Check this FIRST before any DB/Cloud calls
+        // This ensures the admin can ALWAYS get in to fix the system
+        if (cleanUsername === 'admin' && password === 'admin123') {
+            console.log("Emergency Admin Bypass Triggered");
+            const adminUser: User = { 
+                id: 'admin', 
+                username: 'admin', 
+                password: 'admin123', 
+                name: 'Administrator', 
+                role: 'headmaster' 
+            };
+            onLogin(adminUser);
+            return;
         }
 
-        // 3. Emergency Fallback for fresh deployments or sync issues
-        // This ensures the default admin can ALWAYS log in to run the Repair SQL script
-        if (!user && username.toLowerCase() === 'admin' && password === 'admin123') {
-            console.log("Emergency Admin Fallback Triggered");
-            user = { id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'headmaster' };
+        // 2. Normal Login Flow
+        // Check Local Cache First (for speed/offline)
+        let user = users.find(u => u.username.toLowerCase() === cleanUsername && u.password === password);
+        
+        // 3. If not found locally, check Cloud directly (Source of Truth)
+        if (!user) {
+            try {
+                const cloudUser = await dbService.verifyCloudUser(username, password);
+                if (cloudUser) user = cloudUser;
+            } catch (cloudErr) {
+                console.warn("Cloud verification failed, continuing to local checks:", cloudErr);
+            }
         }
 
         if (user) {
-          // Special case for default admin: allow login regardless of portal selection for initial setup
-          if (user.username.toLowerCase() === 'admin' && user.password === 'admin123') {
-              onLogin(user);
-              return;
-          }
-
           if (user.role === activeRole) {
             onLogin(user);
           } else {
@@ -53,10 +62,11 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRefreshData }) => {
             setError(`Access Denied: You cannot log in here. Please use the ${roleNames[user.role]} portal.`);
           }
         } else {
-          setError('Invalid credentials. If this is a new account, ensure you have an active internet connection.');
+          setError('Invalid credentials. Please check your username and password.');
         }
-    } catch (err) {
-        setError('Connection error. Please try again.');
+    } catch (err: any) {
+        console.error("Login Error:", err);
+        setError(`System Error: ${err.message || 'Unknown error'}. Please refresh the page.`);
     } finally {
         setIsUpdating(false);
     }

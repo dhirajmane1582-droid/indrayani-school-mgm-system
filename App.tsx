@@ -21,8 +21,13 @@ const App: React.FC = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = sessionStorage.getItem('et_session');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = sessionStorage.getItem('et_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error("Session recovery failed:", e);
+      return null;
+    }
   });
 
   // Data States
@@ -129,11 +134,27 @@ const App: React.FC = () => {
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6">
-        <Loader2 size={64} className="text-indigo-600 animate-spin" />
-        <div className="text-center">
-            <p className="text-sm font-black text-slate-800 uppercase tracking-widest mb-1">Indrayani School</p>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Syncing Local Registry...</p>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6 p-4">
+        <div className="relative">
+            <Loader2 size={64} className="text-indigo-600 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+                <Database size={24} className="text-indigo-200" />
+            </div>
+        </div>
+        <div className="text-center space-y-2">
+            <p className="text-sm font-black text-slate-800 uppercase tracking-widest">Indrayani School</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Synchronizing Cloud Registry...</p>
+        </div>
+        
+        {/* Safety button if sync takes too long */}
+        <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500">
+            <button 
+                onClick={() => setIsLoaded(true)}
+                className="px-6 py-3 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-100"
+            >
+                Skip Sync & Enter
+            </button>
+            <p className="text-[9px] text-slate-300 mt-2 text-center">Click if stuck for more than 10 seconds</p>
         </div>
       </div>
     );

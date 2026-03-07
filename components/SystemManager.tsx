@@ -12,11 +12,10 @@ const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport }) => 
   const [showSql, setShowSql] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const sqlSchema = `-- INDRAYANI SCHOOL - CROSS-DEVICE LOGIN REPAIR (SAFE)
--- This script only adds missing pieces for login and disables device blocking.
--- IT WILL NOT DELETE OR CHANGE YOUR EXISTING ATTENDANCE OR STUDENT DATA.
+  const sqlSchema = `-- INDRAYANI SCHOOL - FULL DATABASE SETUP & REPAIR
+-- This script creates all tables with correct fields and enables global access.
 
--- 1. Ensure the Users table is optimized for Global Login
+-- 1. USERS TABLE (Credentials & Roles)
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username TEXT UNIQUE NOT NULL,
@@ -26,23 +25,136 @@ CREATE TABLE IF NOT EXISTS users (
   "linkedStudentId" UUID
 );
 
--- 2. Add an index to make ID lookups instant from any device
+-- 2. STUDENTS TABLE (Profiles)
+CREATE TABLE IF NOT EXISTS students (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  "rollNo" TEXT,
+  "className" TEXT,
+  medium TEXT,
+  dob TEXT,
+  "placeOfBirth" TEXT,
+  address TEXT,
+  phone TEXT,
+  "alternatePhone" TEXT,
+  "aadharNo" TEXT,
+  "apaarId" TEXT,
+  "penNo" TEXT,
+  caste TEXT,
+  religion TEXT,
+  "mothersName" TEXT,
+  "customFields" JSONB DEFAULT '{}'::jsonb
+);
+
+-- 3. ATTENDANCE TABLE
+CREATE TABLE IF NOT EXISTS attendance (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT NOT NULL,
+  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
+  present BOOLEAN DEFAULT true
+);
+
+-- 4. EXAMS TABLE
+CREATE TABLE IF NOT EXISTS exams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT,
+  type TEXT,
+  date TEXT,
+  "className" TEXT,
+  published BOOLEAN DEFAULT false,
+  "customMaxMarks" JSONB DEFAULT '{}'::jsonb,
+  "customEvaluationTypes" JSONB DEFAULT '{}'::jsonb,
+  "activeSubjectIds" JSONB DEFAULT '[]'::jsonb,
+  "customSubjects" JSONB DEFAULT '[]'::jsonb,
+  timetable JSONB DEFAULT '[]'::jsonb
+);
+
+-- 5. RESULTS TABLE
+CREATE TABLE IF NOT EXISTS results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
+  "examId" UUID REFERENCES exams(id) ON DELETE CASCADE,
+  marks JSONB DEFAULT '{}'::jsonb,
+  "aiRemark" TEXT,
+  published BOOLEAN DEFAULT false
+);
+
+-- 6. ANNUAL RECORDS (Report Cards)
+CREATE TABLE IF NOT EXISTS annual_records (
+  "studentId" UUID PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
+  "academicYear" TEXT,
+  grades JSONB DEFAULT '{}'::jsonb,
+  "sem1Grades" JSONB DEFAULT '{}'::jsonb,
+  "sem2Grades" JSONB DEFAULT '{}'::jsonb,
+  remarks TEXT,
+  hobbies TEXT,
+  "hobbiesSem1" TEXT,
+  "hobbiesSem2" TEXT,
+  improvements TEXT,
+  "improvementsSem1" TEXT,
+  "improvementsSem2" TEXT,
+  "specialImprovementsSem1" TEXT,
+  "specialImprovementsSem2" TEXT,
+  "necessaryImprovementSem1" TEXT,
+  "necessaryImprovementSem2" TEXT,
+  "resultStatus" TEXT,
+  "overallPercentage" TEXT,
+  "customSubjects" JSONB DEFAULT '[]'::jsonb,
+  "subjectOrder" JSONB DEFAULT '[]'::jsonb,
+  medium TEXT,
+  published BOOLEAN DEFAULT false
+);
+
+-- 7. HOMEWORK TABLE
+CREATE TABLE IF NOT EXISTS homework (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT,
+  "dueDate" TEXT,
+  "className" TEXT,
+  medium TEXT,
+  subject TEXT,
+  title TEXT,
+  description TEXT
+);
+
+-- 8. ANNOUNCEMENTS TABLE
+CREATE TABLE IF NOT EXISTS announcements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT,
+  title TEXT,
+  content TEXT,
+  "targetClass" TEXT
+);
+
+-- 9. FEES TABLE
+CREATE TABLE IF NOT EXISTS fees (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
+  amount NUMERIC,
+  date TEXT,
+  remarks TEXT
+);
+
+-- 10. HOLIDAYS TABLE
+CREATE TABLE IF NOT EXISTS holidays (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date TEXT,
+  "endDate" TEXT,
+  name TEXT
+);
+
+-- 11. CUSTOM FIELD DEFINITIONS
+CREATE TABLE IF NOT EXISTS custom_field_defs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  label TEXT
+);
+
+-- 12. INDICES FOR PERFORMANCE
 CREATE INDEX IF NOT EXISTS idx_users_username_lookup ON users (LOWER(username));
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance (date);
+CREATE INDEX IF NOT EXISTS idx_results_student_exam ON results ("studentId", "examId");
 
--- 3. Ensure other tables exist (Safe: if they exist, nothing happens)
-CREATE TABLE IF NOT EXISTS students (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, "rollNo" TEXT, "className" TEXT, medium TEXT, "customFields" JSONB);
-CREATE TABLE IF NOT EXISTS attendance (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date TEXT NOT NULL, "studentId" UUID, present BOOLEAN);
-CREATE TABLE IF NOT EXISTS exams (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, type TEXT, "className" TEXT, timetable JSONB);
-CREATE TABLE IF NOT EXISTS results (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "studentId" UUID, "examId" UUID, marks JSONB, published BOOLEAN);
-CREATE TABLE IF NOT EXISTS annual_records ("studentId" UUID PRIMARY KEY, "academicYear" TEXT, grades JSONB, published BOOLEAN);
-CREATE TABLE IF NOT EXISTS homework (id UUID PRIMARY KEY, date TEXT, "className" TEXT, subject TEXT, title TEXT, description TEXT);
-CREATE TABLE IF NOT EXISTS announcements (id UUID PRIMARY KEY, date TEXT, title TEXT, content TEXT, "targetClass" TEXT);
-CREATE TABLE IF NOT EXISTS fees (id UUID PRIMARY KEY, "studentId" UUID, amount NUMERIC, date TEXT);
-CREATE TABLE IF NOT EXISTS holidays (id UUID PRIMARY KEY, date TEXT, name TEXT);
-CREATE TABLE IF NOT EXISTS custom_field_defs (id UUID PRIMARY KEY, label TEXT);
-
--- 4. CRITICAL: Allow all devices to access the data (Disable RLS)
--- This does not change your data, only the permission to see it from other phones/PCs.
+-- 13. GLOBAL ACCESS PERMISSIONS (Disable RLS)
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE students DISABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
@@ -55,7 +167,12 @@ ALTER TABLE fees DISABLE ROW LEVEL SECURITY;
 ALTER TABLE holidays DISABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_field_defs DISABLE ROW LEVEL SECURITY;
 
--- Refresh Supabase to apply changes
+-- 14. DEFAULT ADMIN USER (If not exists)
+INSERT INTO users (id, username, password, name, role)
+SELECT '00000000-0000-0000-0000-000000000000', 'admin', 'admin123', 'Administrator', 'headmaster'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+
+-- Refresh Supabase
 NOTIFY pgrst, 'reload schema';
 `;
 
