@@ -65,7 +65,8 @@ const App: React.FC = () => {
         if (fetchResults[4].status === 'fulfilled') setAnnualRecords(getVal(4));
         if (fetchResults[5].status === 'fulfilled') setCustomFieldDefs(getVal(5));
         if (fetchResults[6].status === 'fulfilled') setHolidays(getVal(6));
-        if (fetchResults[7].status === 'fulfilled') setUsers(getVal(7));
+        const fetchedUsers = getVal(7);
+        setUsers(fetchedUsers.length > 0 ? fetchedUsers : [{ id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'headmaster' }]);
         if (fetchResults[8].status === 'fulfilled') setFees(getVal(8));
         if (fetchResults[9].status === 'fulfilled') setHomework(getVal(9));
         if (fetchResults[10].status === 'fulfilled') setAnnouncements(getVal(10));

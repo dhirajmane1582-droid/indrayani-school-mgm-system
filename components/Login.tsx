@@ -32,7 +32,20 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRefreshData }) => {
             if (cloudUser) user = cloudUser;
         }
 
+        // 3. Emergency Fallback for fresh deployments or sync issues
+        // This ensures the default admin can ALWAYS log in to run the Repair SQL script
+        if (!user && username.toLowerCase() === 'admin' && password === 'admin123') {
+            console.log("Emergency Admin Fallback Triggered");
+            user = { id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'headmaster' };
+        }
+
         if (user) {
+          // Special case for default admin: allow login regardless of portal selection for initial setup
+          if (user.username.toLowerCase() === 'admin' && user.password === 'admin123') {
+              onLogin(user);
+              return;
+          }
+
           if (user.role === activeRole) {
             onLogin(user);
           } else {
