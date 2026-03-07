@@ -377,7 +377,35 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     try { await lib().set(opt).from(element).save(); } catch (err) { console.error("PDF download failed", err); } finally { setIsDownloading(false); }
   };
 
-  if (!student) return null;
+  if (!student) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6 p-4">
+        <div className="relative">
+            <Loader2 size={64} className="text-emerald-600 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center">
+                <GraduationCap size={24} className="text-emerald-200" />
+            </div>
+        </div>
+        <div className="text-center space-y-2">
+            <p className="text-sm font-black text-slate-800 uppercase tracking-widest">Indrayani School</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">
+                {isSyncing ? 'Retrieving Student Profile...' : 'Student Profile Not Found'}
+            </p>
+            {!isSyncing && (
+                <button 
+                  onClick={onRefresh}
+                  className="mt-4 px-6 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                >
+                    Retry Sync
+                </button>
+            )}
+        </div>
+        <button onClick={onLogout} className="mt-8 text-slate-400 hover:text-rose-600 font-black text-[10px] uppercase tracking-widest transition-all">
+            Logout & Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans">

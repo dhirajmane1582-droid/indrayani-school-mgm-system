@@ -187,6 +187,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    // After login, ensure we have the latest data for this user's context
+    handleSync(true); 
+  };
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6 p-4">
@@ -215,7 +221,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (!currentUser) return <Login users={users} onLogin={setCurrentUser} onRefreshData={() => handleSync(true)} />;
+  if (!currentUser) return <Login users={users} onLogin={handleLogin} onRefreshData={() => handleSync(true)} />;
 
   const theme = {
     headmaster: { text: 'text-rose-700', bg: 'bg-rose-600', lightBg: 'bg-rose-50 border-rose-200', gradient: 'from-rose-50 to-white', shadow: 'shadow-rose-100', icon: Shield },

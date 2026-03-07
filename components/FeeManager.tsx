@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Student, FeeRecord, SPECIFIC_CLASSES } from '../types';
 import { IndianRupee, History, Plus, Search, Calendar, Lock, X, ChevronRight } from 'lucide-react';
+import { dbService } from '../services/db';
 
 interface FeeManagerProps {
   students: Student[];

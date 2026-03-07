@@ -342,74 +342,97 @@ const StudentManager: React.FC<StudentManagerProps> = ({
     XLSX.writeFile(wb, "Student_Import_Template.xlsx");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setIsSyncing(true);
+    setTabError(null);
+
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
-      if (data.length === 0) { alert("File is empty."); return; }
-      const importedStudents: Student[] = [];
-      const newUsers: User[] = [];
-      data.forEach((row: any) => {
-        const studentId = generateUUID();
-        const s: Student = {
-          id: studentId,
-          name: (row['Full Name'] || row['Name'] || '').toString().trim(),
-          mothersName: (row['Mother Name'] || '').toString().trim(),
-          rollNo: (row['Roll No'] || row['Roll'] || '').toString(),
-          className: normalizeClassName((row['Class'] || 'Class 1').toString()),
-          medium: (row['Medium']?.toString().toLowerCase().includes('semi') ? 'Semi' : 'English'),
-          religion: (row['Religion'] || '').toString().trim(),
-          dob: parseImportDate(row['DOB (YYYY-MM-DD)'] || row['DOB'] || ''),
-          placeOfBirth: (row['Place of Birth'] || '').toString(),
-          phone: (row['Phone'] || '').toString().replace(/\D/g, ''),
-          alternatePhone: (row['Alt Phone'] || '').toString().replace(/\D/g, ''),
-          aadharNo: (row['Aadhar Card'] || row['Aadhar'] || '').toString().replace(/\D/g, ''),
-          apaarId: (row['APAAR ID'] || row['Apaar'] || '').toString(),
-          penNo: (row['PEN No.'] || row['PEN'] || '').toString().trim(),
-          caste: (row['Caste'] || '').toString(),
-          address: (row['Address'] || '').toString(),
-          customFields: {}
-        };
-        if (s.name && s.rollNo) {
-          importedStudents.push(s);
-          const creds = generateCredentials(s, [...users, ...newUsers]);
-          newUsers.push({
-            id: generateUUID(),
-            username: creds.username,
-            password: creds.password,
-            name: s.name,
-            role: 'student',
-            linkedStudentId: s.id
-          });
-        }
-      });
-      if (importedStudents.length > 0) {
-        setStudents(prev => [...prev, ...importedStudents]);
-        setUsers(prev => [...prev, ...newUsers]);
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target?.result;
+        const wb = XLSX.read(data, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData = XLSX.utils.sheet_to_json(ws);
         
-        // Automatic Cloud Sync for Imported Data
-        setIsSyncing(true);
-        Promise.all([
-            dbService.putAll('students', importedStudents),
-            dbService.putAll('users', newUsers)
-        ]).then(() => {
-            showToast(`${importedStudents.length} Students Imported & Synced!`, "success");
-        }).catch(err => {
-            console.error("Import sync error:", err);
-            showToast("Imported locally, but cloud sync failed.", "error");
-        }).finally(() => {
-            setIsSyncing(false);
+        if (jsonData.length === 0) {
+          showToast("Excel file is empty", "error");
+          setIsSyncing(false);
+          return;
+        }
+
+        const importedStudents: Student[] = [];
+        const newUsers: User[] = [];
+
+        jsonData.forEach((row: any) => {
+          const studentId = generateUUID();
+          const s: Student = {
+            id: studentId,
+            name: (row['Full Name'] || row['Name'] || '').toString().trim(),
+            mothersName: (row['Mother Name'] || '').toString().trim(),
+            rollNo: (row['Roll No'] || row['Roll'] || '').toString(),
+            className: normalizeClassName((row['Class'] || 'Class 1').toString()),
+            medium: (row['Medium']?.toString().toLowerCase().includes('semi') ? 'Semi' : 'English'),
+            religion: (row['Religion'] || '').toString().trim(),
+            dob: parseImportDate(row['DOB (YYYY-MM-DD)'] || row['DOB'] || ''),
+            placeOfBirth: (row['Place of Birth'] || '').toString(),
+            phone: (row['Phone'] || '').toString().replace(/\D/g, ''),
+            alternatePhone: (row['Alt Phone'] || '').toString().replace(/\D/g, ''),
+            aadharNo: (row['Aadhar Card'] || row['Aadhar'] || '').toString().replace(/\D/g, ''),
+            apaarId: (row['APAAR ID'] || row['Apaar'] || '').toString(),
+            penNo: (row['PEN No.'] || row['PEN'] || '').toString().trim(),
+            caste: (row['Caste'] || '').toString(),
+            address: (row['Address'] || '').toString(),
+            customFields: {}
+          };
+
+          if (s.name && s.rollNo) {
+            importedStudents.push(s);
+            const creds = generateCredentials(s, [...users, ...newUsers]);
+            newUsers.push({
+              id: generateUUID(),
+              username: creds.username,
+              password: creds.password,
+              name: s.name,
+              role: 'student',
+              linkedStudentId: s.id
+            });
+          }
         });
+
+        if (importedStudents.length > 0) {
+          // 1. Update Local State
+          setStudents(prev => [...prev, ...importedStudents]);
+          setUsers(prev => [...prev, ...newUsers]);
+          
+          // 2. Sync to Cloud
+          showToast(`Uploading ${importedStudents.length} profiles...`, "info");
+          await dbService.putAll('students', importedStudents);
+          await dbService.putAll('users', newUsers);
+          
+          showToast(`${importedStudents.length} Students Imported & Synced!`, "success");
+        } else {
+          showToast("No valid student records found in file", "error");
+        }
+      } catch (err: any) {
+        console.error("Import error:", err);
+        setTabError(`Import Failed: ${err.message || 'Check file format'}`);
+        showToast("Import failed", "error");
+      } finally {
+        setIsSyncing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.readAsBinaryString(file);
+    
+    reader.onerror = () => {
+      showToast("File reading failed", "error");
+      setIsSyncing(false);
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   const handleRemoveStudent = async (student: Student) => {

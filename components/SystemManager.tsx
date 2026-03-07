@@ -1,6 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import { Database, DownloadCloud, UploadCloud, AlertTriangle, CheckCircle2, ShieldAlert, FileJson, Terminal, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { supabase } from '../services/supabase';
 
 interface SystemManagerProps {
   onExport: () => void;
