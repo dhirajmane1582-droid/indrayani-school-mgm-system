@@ -4,157 +4,54 @@ import { Database, DownloadCloud, UploadCloud, AlertTriangle, CheckCircle2, Shie
 
 interface SystemManagerProps {
   onExport: () => void;
-  onImport: (data: any) => void;
+  onImport: (data: any) => Promise<void>;
+  onPushToCloud: () => Promise<void>;
+  isSyncing: boolean;
 }
 
-const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport }) => {
+const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport, onPushToCloud, isSyncing }) => {
   const [status, setStatus] = useState<{msg: string, type: 'success'|'error'} | null>(null);
   const [showSql, setShowSql] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const sqlSchema = `-- INDRAYANI SCHOOL - FULL DATABASE SETUP & REPAIR
--- This script creates all tables with correct fields and enables global access.
+  const testConnection = async () => {
+    setIsTesting(true);
+    setStatus(null);
+    try {
+      const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+      if (error) throw error;
+      setStatus({ msg: "Cloud Connection Successful! Database is reachable.", type: 'success' });
+    } catch (err: any) {
+      console.error("Connection test failed:", err);
+      setStatus({ msg: `Connection Failed: ${err.message}. Ensure SQL script is run and Anon Key is correct.`, type: 'error' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
--- 1. USERS TABLE (Credentials & Roles)
-CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username TEXT UNIQUE NOT NULL,
-  password TEXT NOT NULL,
-  name TEXT NOT NULL,
-  role TEXT NOT NULL,
-  "linkedStudentId" UUID
-);
+  const sqlSchema = `-- INDRAYANI SCHOOL - MASTER DATABASE REPAIR (SAFE)
+-- Run this in Supabase SQL Editor to fix all synchronization issues.
 
--- 2. STUDENTS TABLE (Profiles)
-CREATE TABLE IF NOT EXISTS students (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  "rollNo" TEXT,
-  "className" TEXT,
-  medium TEXT,
-  dob TEXT,
-  "placeOfBirth" TEXT,
-  address TEXT,
-  phone TEXT,
-  "alternatePhone" TEXT,
-  "aadharNo" TEXT,
-  "apaarId" TEXT,
-  "penNo" TEXT,
-  caste TEXT,
-  religion TEXT,
-  "mothersName" TEXT,
-  "customFields" JSONB DEFAULT '{}'::jsonb
-);
+-- 1. Ensure all tables exist with correct structure
+CREATE TABLE IF NOT EXISTS students (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, "rollNo" TEXT, "className" TEXT, medium TEXT, dob DATE, "placeOfBirth" TEXT, address TEXT, phone TEXT, "alternatePhone" TEXT, "aadharNo" TEXT, "apaarId" TEXT, "penNo" TEXT, caste TEXT, religion TEXT, "mothersName" TEXT, "customFields" JSONB DEFAULT '{}'::jsonb);
+CREATE TABLE IF NOT EXISTS attendance (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, present BOOLEAN DEFAULT true);
+CREATE TABLE IF NOT EXISTS exams (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, type TEXT, date DATE, "className" TEXT, published BOOLEAN DEFAULT false, "customMaxMarks" JSONB DEFAULT '{}'::jsonb, "customEvaluationTypes" JSONB DEFAULT '{}'::jsonb, "activeSubjectIds" TEXT[] DEFAULT '{}', "customSubjects" JSONB DEFAULT '[]'::jsonb, timetable JSONB DEFAULT '[]'::jsonb);
+CREATE TABLE IF NOT EXISTS results (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, "examId" UUID REFERENCES exams(id) ON DELETE CASCADE, marks JSONB DEFAULT '{}'::jsonb, "aiRemark" TEXT, published BOOLEAN DEFAULT false);
+CREATE TABLE IF NOT EXISTS annual_records ("studentId" UUID PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE, "academicYear" TEXT, grades JSONB DEFAULT '{}'::jsonb, "sem1Grades" JSONB DEFAULT '{}'::jsonb, "sem2Grades" JSONB DEFAULT '{}'::jsonb, remarks TEXT, hobbies TEXT, "hobbiesSem1" TEXT, "hobbiesSem2" TEXT, improvements TEXT, "improvementsSem1" TEXT, "improvementsSem2" TEXT, "specialImprovementsSem1" TEXT, "specialImprovementsSem2" TEXT, "necessaryImprovementSem1" TEXT, "necessaryImprovementSem2" TEXT, "resultStatus" TEXT, "overallPercentage" TEXT, "customSubjects" TEXT[] DEFAULT '{}', "subjectOrder" TEXT[] DEFAULT '{}', medium TEXT, published BOOLEAN DEFAULT false);
+CREATE TABLE IF NOT EXISTS homework (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "dueDate" DATE, "className" TEXT NOT NULL, medium TEXT NOT NULL, subject TEXT NOT NULL, title TEXT NOT NULL, description TEXT);
+CREATE TABLE IF NOT EXISTS announcements (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, "targetClass" TEXT);
+CREATE TABLE IF NOT EXISTS fees (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, amount NUMERIC(10, 2) NOT NULL, date DATE NOT NULL, remarks TEXT);
+CREATE TABLE IF NOT EXISTS holidays (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "endDate" DATE, name TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS custom_field_defs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), label TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, "linkedStudentId" UUID REFERENCES students(id) ON DELETE SET NULL);
 
--- 3. ATTENDANCE TABLE
-CREATE TABLE IF NOT EXISTS attendance (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date TEXT NOT NULL,
-  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
-  present BOOLEAN DEFAULT true
-);
-
--- 4. EXAMS TABLE
-CREATE TABLE IF NOT EXISTS exams (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title TEXT,
-  type TEXT,
-  date TEXT,
-  "className" TEXT,
-  published BOOLEAN DEFAULT false,
-  "customMaxMarks" JSONB DEFAULT '{}'::jsonb,
-  "customEvaluationTypes" JSONB DEFAULT '{}'::jsonb,
-  "activeSubjectIds" JSONB DEFAULT '[]'::jsonb,
-  "customSubjects" JSONB DEFAULT '[]'::jsonb,
-  timetable JSONB DEFAULT '[]'::jsonb
-);
-
--- 5. RESULTS TABLE
-CREATE TABLE IF NOT EXISTS results (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
-  "examId" UUID REFERENCES exams(id) ON DELETE CASCADE,
-  marks JSONB DEFAULT '{}'::jsonb,
-  "aiRemark" TEXT,
-  published BOOLEAN DEFAULT false
-);
-
--- 6. ANNUAL RECORDS (Report Cards)
-CREATE TABLE IF NOT EXISTS annual_records (
-  "studentId" UUID PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
-  "academicYear" TEXT,
-  grades JSONB DEFAULT '{}'::jsonb,
-  "sem1Grades" JSONB DEFAULT '{}'::jsonb,
-  "sem2Grades" JSONB DEFAULT '{}'::jsonb,
-  remarks TEXT,
-  hobbies TEXT,
-  "hobbiesSem1" TEXT,
-  "hobbiesSem2" TEXT,
-  improvements TEXT,
-  "improvementsSem1" TEXT,
-  "improvementsSem2" TEXT,
-  "specialImprovementsSem1" TEXT,
-  "specialImprovementsSem2" TEXT,
-  "necessaryImprovementSem1" TEXT,
-  "necessaryImprovementSem2" TEXT,
-  "resultStatus" TEXT,
-  "overallPercentage" TEXT,
-  "customSubjects" JSONB DEFAULT '[]'::jsonb,
-  "subjectOrder" JSONB DEFAULT '[]'::jsonb,
-  medium TEXT,
-  published BOOLEAN DEFAULT false
-);
-
--- 7. HOMEWORK TABLE
-CREATE TABLE IF NOT EXISTS homework (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date TEXT,
-  "dueDate" TEXT,
-  "className" TEXT,
-  medium TEXT,
-  subject TEXT,
-  title TEXT,
-  description TEXT
-);
-
--- 8. ANNOUNCEMENTS TABLE
-CREATE TABLE IF NOT EXISTS announcements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date TEXT,
-  title TEXT,
-  content TEXT,
-  "targetClass" TEXT
-);
-
--- 9. FEES TABLE
-CREATE TABLE IF NOT EXISTS fees (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "studentId" UUID REFERENCES students(id) ON DELETE CASCADE,
-  amount NUMERIC,
-  date TEXT,
-  remarks TEXT
-);
-
--- 10. HOLIDAYS TABLE
-CREATE TABLE IF NOT EXISTS holidays (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  date TEXT,
-  "endDate" TEXT,
-  name TEXT
-);
-
--- 11. CUSTOM FIELD DEFINITIONS
-CREATE TABLE IF NOT EXISTS custom_field_defs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  label TEXT
-);
-
--- 12. INDICES FOR PERFORMANCE
+-- 2. Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_username_lookup ON users (LOWER(username));
-CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance (date);
-CREATE INDEX IF NOT EXISTS idx_results_student_exam ON results ("studentId", "examId");
+CREATE INDEX IF NOT EXISTS idx_students_class ON students("className");
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
 
--- 13. GLOBAL ACCESS PERMISSIONS (Disable RLS)
+-- 3. CRITICAL: Disable RLS to allow cross-device sync without complex Auth
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE students DISABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
@@ -167,10 +64,10 @@ ALTER TABLE fees DISABLE ROW LEVEL SECURITY;
 ALTER TABLE holidays DISABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_field_defs DISABLE ROW LEVEL SECURITY;
 
--- 14. DEFAULT ADMIN USER (If not exists)
-INSERT INTO users (id, username, password, name, role)
-SELECT '00000000-0000-0000-0000-000000000000', 'admin', 'admin123', 'Administrator', 'headmaster'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+-- 4. Ensure default admin exists
+INSERT INTO users (username, password, name, role)
+VALUES ('admin', 'admin123', 'Administrator', 'headmaster')
+ON CONFLICT (username) DO NOTHING;
 
 -- Refresh Supabase
 NOTIFY pgrst, 'reload schema';
@@ -182,24 +79,35 @@ NOTIFY pgrst, 'reload schema';
     setTimeout(() => setStatus(null), 3000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        if (window.confirm("CRITICAL WARNING: This will overwrite ALL data on this device with the backup file. Proceed?")) {
-            onImport(json);
-            setStatus({ msg: "Database Restored Successfully!", type: 'success' });
+        if (window.confirm("CRITICAL WARNING: This will overwrite ALL data on this device and CLOUD with the backup file. Proceed?")) {
+            await onImport(json);
+            setStatus({ msg: "Database Restored & Synced Successfully!", type: 'success' });
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
-      } catch (err) {
-        setStatus({ msg: "Invalid backup file format.", type: 'error' });
+      } catch (err: any) {
+        setStatus({ msg: `Import failed: ${err.message}`, type: 'error' });
       }
     };
     reader.readAsText(file);
+  };
+
+  const handlePush = async () => {
+    if (window.confirm("This will upload all data from THIS device to the Cloud. Existing cloud data may be overwritten. Continue?")) {
+      try {
+        await onPushToCloud();
+        setStatus({ msg: "Local data pushed to Cloud successfully!", type: 'success' });
+      } catch (err: any) {
+        setStatus({ msg: `Push failed: ${err.message}`, type: 'error' });
+      }
+    }
   };
 
   return (
@@ -241,6 +149,10 @@ NOTIFY pgrst, 'reload schema';
                     <button onClick={copySql} className="absolute top-2 right-2 p-2 bg-indigo-600 hover:bg-indigo-50 rounded-lg shadow-lg transition-all active:scale-90" title="Copy SQL"><Copy size={16} /></button>
                 </div>
                 <div className="flex gap-4">
+                    <button onClick={testConnection} disabled={isTesting} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2">
+                        {isTesting ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        Test Cloud Connection
+                    </button>
                     <a href="https://supabase.com/dashboard/project/tubdjcdghosxozzehuep/sql/new" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-3 bg-white text-indigo-900 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl">Open Supabase SQL Editor <ExternalLink size={14} /></a>
                 </div>
             </div>
@@ -256,7 +168,7 @@ NOTIFY pgrst, 'reload schema';
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-between group hover:border-indigo-300 transition-all">
             <div>
               <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform"><DownloadCloud size={24} /></div>
@@ -265,14 +177,37 @@ NOTIFY pgrst, 'reload schema';
             </div>
             <button onClick={onExport} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-2"><FileJson size={18} /> Download Backup</button>
           </div>
+          
+          <div className="bg-indigo-50/30 p-6 rounded-2xl border border-indigo-100 flex flex-col justify-between group hover:border-indigo-300 transition-all">
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-white border border-indigo-100 flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform"><UploadCloud size={24} /></div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">Push to Cloud</h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-6">Upload all data from this device to the cloud database.</p>
+            </div>
+            <button 
+              onClick={handlePush} 
+              disabled={isSyncing}
+              className="w-full py-4 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-50 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isSyncing ? <RefreshCw size={18} className="animate-spin" /> : <UploadCloud size={18} />}
+              Push to Cloud
+            </button>
+          </div>
+
           <div className="bg-rose-50/30 p-6 rounded-2xl border border-rose-100 flex flex-col justify-between group hover:border-rose-300 transition-all">
             <div>
-              <div className="w-12 h-12 rounded-xl bg-white border border-rose-100 flex items-center justify-center text-rose-600 mb-4 group-hover:scale-110 transition-transform"><UploadCloud size={24} /></div>
+              <div className="w-12 h-12 rounded-xl bg-white border border-rose-100 flex items-center justify-center text-rose-600 mb-4 group-hover:scale-110 transition-transform"><ShieldAlert size={24} /></div>
               <h3 className="text-lg font-bold text-slate-800 mb-2">Restore All</h3>
               <p className="text-xs text-slate-500 leading-relaxed mb-6">Upload a backup file to overwrite all local and cloud data.</p>
             </div>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} className="w-full py-4 bg-white text-rose-600 border border-rose-200 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-rose-50 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2"><ShieldAlert size={18} /> Import Backup</button>
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              disabled={isSyncing}
+              className="w-full py-4 bg-white text-rose-600 border border-rose-200 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-rose-50 shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <ShieldAlert size={18} /> Import Backup
+            </button>
           </div>
         </div>
 

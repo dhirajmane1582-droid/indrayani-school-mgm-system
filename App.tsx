@@ -48,9 +48,12 @@ const App: React.FC = () => {
 
   const isInitialSyncDone = useRef(false);
   
+  const [syncError, setSyncError] = useState<string | null>(null);
+  
   const handleSync = useCallback(async (forceCloud = true) => {
     if (isSyncing) return;
     setIsSyncing(true);
+    setSyncError(null);
     try {
       const stores = [
         'students', 'attendance', 'exams', 'results', 'annualRecords', 
@@ -60,6 +63,15 @@ const App: React.FC = () => {
       // Step 1: Force Cloud Fetch for the "Source of Truth"
       if (forceCloud) {
         const fetchResults = await Promise.allSettled(stores.map(s => dbService.getAll(s)));
+        
+        const failedStores = fetchResults
+          .map((res, i) => res.status === 'rejected' ? stores[i] : null)
+          .filter(Boolean);
+        
+        if (failedStores.length > 0) {
+          setSyncError(`Cloud sync failed for: ${failedStores.join(', ')}`);
+        }
+
         const getVal = (idx: number, fallback: any[] = []) => 
           fetchResults[idx].status === 'fulfilled' ? (fetchResults[idx] as PromiseFulfilledResult<any>).value : fallback;
 
@@ -126,10 +138,51 @@ const App: React.FC = () => {
 
   const handleImportSystem = async (data: any) => {
     setIsSyncing(true);
-    if (data.students) setStudents(data.students);
-    if (data.users) setUsers(data.users);
-    await handleSync(true); 
-    setIsSyncing(false);
+    try {
+      const stores = [
+        'students', 'attendance', 'exams', 'results', 'annualRecords', 
+        'customFields', 'holidays', 'users', 'fees', 'homework', 'announcements'
+      ];
+      
+      for (const store of stores) {
+        if (data[store] && Array.isArray(data[store])) {
+          await dbService.putAll(store, data[store]);
+        } else if (store === 'annualRecords' && data[store]) {
+          // annualRecords is an object or array depending on version
+          const records = Array.isArray(data[store]) ? data[store] : Object.values(data[store]);
+          await dbService.putAll(store, records);
+        }
+      }
+      
+      await handleSync(true);
+    } catch (err: any) {
+      console.error("Import failed:", err);
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePushToCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const stores = [
+        'students', 'attendance', 'exams', 'results', 'annualRecords', 
+        'customFields', 'holidays', 'users', 'fees', 'homework', 'announcements'
+      ];
+      
+      for (const store of stores) {
+        const localData = await dbService.getLocal(store);
+        if (localData && localData.length > 0) {
+          await dbService.putAll(store, localData);
+        }
+      }
+    } catch (err: any) {
+      console.error("Push failed:", err);
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   if (!isLoaded) {
@@ -220,7 +273,7 @@ const App: React.FC = () => {
       case 'fees': return <FeeManager students={students} fees={fees} setFees={setFees} readOnly={currentUser.role === 'teacher'} />;
       case 'users': return <UserManagement users={users} setUsers={setUsers} currentUser={currentUser} students={students} />;
       case 'promotion': return <PromotionManager students={students} setStudents={setStudents} />;
-      case 'system': return <SystemManager onExport={handleExportSystem} onImport={handleImportSystem} />;
+      case 'system': return <SystemManager onExport={handleExportSystem} onImport={handleImportSystem} onPushToCloud={handlePushToCloud} isSyncing={isSyncing} />;
       default: return null;
     }
   };
@@ -243,6 +296,16 @@ const App: React.FC = () => {
                </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
+               {syncError && (
+                 <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-[10px] font-black text-rose-600 uppercase animate-pulse">
+                   <WifiOff size={14} /> Cloud Offline
+                 </div>
+               )}
+               {!syncError && !isSyncing && (
+                 <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] font-black text-emerald-600 uppercase">
+                   <Wifi size={14} /> Cloud Online
+                 </div>
+               )}
                <button onClick={() => handleSync(true)} disabled={isSyncing} className="p-2.5 bg-white text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-xl active:scale-95 transition-all hidden sm:flex" title="Cloud Update">
                   <RefreshCw size={20} className={isSyncing ? 'animate-spin text-indigo-600' : ''} />
                </button>
