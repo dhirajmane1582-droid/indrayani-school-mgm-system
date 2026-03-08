@@ -143,12 +143,20 @@ const StudentManager: React.FC<StudentManagerProps> = ({
   const normalizeClassName = (val: string): string => {
     const v = val.trim();
     if (/^\d+$/.test(v)) return `Class ${v}`;
+    
+    // Handle ordinal numbers like 1st, 2nd, 3rd, 4th...
+    const ordinalMatch = v.match(/^(\d+)(st|nd|rd|th)$/i);
+    if (ordinalMatch) return `Class ${ordinalMatch[1]}`;
+
     const lower = v.toLowerCase();
     if (lower.includes('nur')) return 'Nursery';
     if (lower.includes('jr')) return 'Jr. KG';
     if (lower.includes('sr')) return 'Sr. KG';
     if (lower.startsWith('class ')) {
         const num = lower.replace('class ', '').trim();
+        // Handle "class 1st" etc
+        const innerOrdinal = num.match(/^(\d+)(st|nd|rd|th)$/i);
+        if (innerOrdinal) return `Class ${innerOrdinal[1]}`;
         return `Class ${num.charAt(0).toUpperCase() + num.slice(1)}`;
     }
     return v;
@@ -444,7 +452,11 @@ const StudentManager: React.FC<StudentManagerProps> = ({
               await dbService.delete('users', studentUser.id);
               setUsers(prev => prev.filter(u => u.id !== studentUser.id));
           }
+          
+          // Delete related records from local DB (Supabase handles cascade)
           await dbService.delete('students', student.id);
+          await dbService.delete('annualRecords', student.id);
+          
           setStudents(prev => prev.filter(s => s.id !== student.id));
           showToast("Student & Credentials Removed", "info");
       } catch (err: any) {
