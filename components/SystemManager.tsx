@@ -20,12 +20,35 @@ const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport, onPus
     setIsTesting(true);
     setStatus(null);
     try {
-      const { data, error } = await supabase.from('users').select('count', { count: 'exact', head: true });
-      if (error) throw error;
+      // Use a simple query to test connection with retry
+      const testQuery = async () => {
+          const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+          if (error) throw error;
+          return true;
+      };
+
+      // Simple retry logic for the test button
+      let success = false;
+      let lastErr = null;
+      for(let i=0; i<3; i++) {
+          try {
+              await Promise.race([
+                  testQuery(),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+              ]);
+              success = true;
+              break;
+          } catch (e) {
+              lastErr = e;
+              await new Promise(r => setTimeout(r, 1000));
+          }
+      }
+
+      if (!success) throw lastErr;
       setStatus({ msg: "Cloud Connection Successful! Database is reachable.", type: 'success' });
     } catch (err: any) {
       console.error("Connection test failed:", err);
-      setStatus({ msg: `Connection Failed: ${err.message}. Ensure SQL script is run and Anon Key is correct.`, type: 'error' });
+      setStatus({ msg: `Connection Failed: ${err.message || 'Network Error'}. Ensure SQL script is run and your internet is stable.`, type: 'error' });
     } finally {
       setIsTesting(false);
     }
@@ -36,6 +59,24 @@ const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport, onPus
 
 -- 1. Ensure all tables exist with correct structure
 CREATE TABLE IF NOT EXISTS students (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, "rollNo" TEXT, "className" TEXT, medium TEXT, dob DATE, "placeOfBirth" TEXT, address TEXT, phone TEXT, "alternatePhone" TEXT, "aadharNo" TEXT, "apaarId" TEXT, "penNo" TEXT, caste TEXT, religion TEXT, "mothersName" TEXT, "customFields" JSONB DEFAULT '{}'::jsonb);
+
+-- Ensure all columns exist (in case table was created with older version)
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "rollNo" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "className" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS medium TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS dob DATE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "placeOfBirth" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "alternatePhone" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "aadharNo" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "apaarId" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "penNo" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS caste TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS religion TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "mothersName" TEXT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS "customFields" JSONB DEFAULT '{}'::jsonb;
+
 CREATE TABLE IF NOT EXISTS attendance (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, present BOOLEAN DEFAULT true);
 CREATE TABLE IF NOT EXISTS exams (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, type TEXT, date DATE, "className" TEXT, published BOOLEAN DEFAULT false, "customMaxMarks" JSONB DEFAULT '{}'::jsonb, "customEvaluationTypes" JSONB DEFAULT '{}'::jsonb, "activeSubjectIds" TEXT[] DEFAULT '{}', "customSubjects" JSONB DEFAULT '[]'::jsonb, timetable JSONB DEFAULT '[]'::jsonb);
 CREATE TABLE IF NOT EXISTS results (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, "examId" UUID REFERENCES exams(id) ON DELETE CASCADE, marks JSONB DEFAULT '{}'::jsonb, "aiRemark" TEXT, published BOOLEAN DEFAULT false);

@@ -55,6 +55,32 @@ const withTimeout = (promise: Promise<any> | any, ms: number): Promise<any> => {
   ]);
 };
 
+const withRetry = async (fn: () => Promise<any>, retries = 5, delay = 1500): Promise<any> => {
+  let lastError: any;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = err.message || String(err);
+      // Retry on network errors, timeouts, or specific fetch failures
+      const isRetryable = 
+        errMsg.includes('Failed to fetch') || 
+        errMsg.includes('Sync Timeout') || 
+        errMsg.includes('Load failed') ||
+        err.name === 'TypeError' ||
+        err.name === 'AbortError';
+
+      if (!isRetryable) throw err;
+      
+      console.warn(`Cloud Operation Failed (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`, errMsg);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2; // Exponential backoff
+    }
+  }
+  throw lastError;
+};
+
 export const dbService = {
   async getLocal(storeName: string) {
     const db = await initDB();
@@ -66,19 +92,20 @@ export const dbService = {
     const tableName = TABLE_MAP[storeName];
 
     try {
-      const { data, error } = await withTimeout(supabase.from(tableName).select('*'), 15000);
+      const data = await withRetry(async () => 
+        await withTimeout(supabase.from(tableName).select('*'), 20000)
+      );
       
-      if (error) throw error;
+      if (data.error) throw data.error;
       
-      if (data && Array.isArray(data)) {
+      if (data.data && Array.isArray(data.data)) {
         const tx = db.transaction(storeName, 'readwrite');
-        // Clear local before putting if it's a full cloud sync to ensure deletion visibility
         await tx.store.clear();
-        for (const item of data) {
+        for (const item of data.data) {
           await tx.store.put(item);
         }
         await tx.done;
-        return data;
+        return data.data;
       }
     } catch (err: any) {
       console.warn(`Supabase Sync [${storeName}] Failed:`, err.message || err);
@@ -89,19 +116,17 @@ export const dbService = {
 
   async verifyCloudUser(username: string, pass: string) {
     try {
-      // Use ilike for case-insensitive username comparison
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .ilike('username', username.trim())
-        .eq('password', pass)
-        .maybeSingle();
+      const result = await withRetry(async () => 
+        await supabase
+          .from('users')
+          .select('*')
+          .ilike('username', username.trim())
+          .eq('password', pass)
+          .maybeSingle()
+      );
       
-      if (error) {
-          console.error("Cloud Auth Error:", error);
-          return null;
-      }
-      return data;
+      if (result.error) return null;
+      return result.data;
     } catch (e) {
       return null;
     }
@@ -112,17 +137,22 @@ export const dbService = {
     const tableName = TABLE_MAP[storeName];
     const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
 
-    // 1. Save Locally
     await db.put(storeName, item);
 
-    // 2. Cloud Save
-    const { error } = await supabase
-      .from(tableName)
-      .upsert(item, { onConflict: conflictColumn });
-    
-    if (error) {
+    try {
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from(tableName)
+          .upsert(item, { onConflict: conflictColumn });
+        if (error) throw error;
+      });
+    } catch (error: any) {
       console.error(`Supabase Upsert Error [${storeName}]:`, error);
-      throw new Error(`Cloud Sync Error: ${error.message}. Table [${tableName}] may be missing new columns. Run 'Repair SQL' in System tab.`);
+      const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('Sync Timeout');
+      if (isNetwork) {
+          throw new Error(`Network Error: Cloud is unreachable. Please check your internet connection or disable AdBlockers.`);
+      }
+      throw new Error(`Cloud Database Error: ${error.message}. If this persists, run 'Repair SQL' in the System tab.`);
     }
   },
 
@@ -140,12 +170,18 @@ export const dbService = {
     }
     await tx.done;
 
-    // Upload in chunks to Supabase to prevent large payload errors
-    const chunkSize = 50;
+    // Smaller chunks for data-heavy tables
+    const isDataHeavy = ['annualRecords', 'results', 'students'].includes(storeName);
+    const chunkSize = isDataHeavy ? 20 : 50;
+
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
-        const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });
-        if (error) {
+        try {
+          await withRetry(async () => {
+            const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });
+            if (error) throw error;
+          });
+        } catch (error: any) {
           console.error(`Supabase Chunk Error [${storeName}]:`, error);
           throw new Error(`Cloud Bulk Upload Failed at chunk ${Math.floor(i/chunkSize) + 1}: ${error.message}`);
         }
@@ -159,8 +195,12 @@ export const dbService = {
     const idField = (storeName === 'annualRecords') ? 'studentId' : 'id';
 
     await db.delete(storeName, id);
-    const { error } = await supabase.from(tableName).delete().eq(idField, id);
-    if (error) {
+    try {
+      await withRetry(async () => {
+        const { error } = await supabase.from(tableName).delete().eq(idField, id);
+        if (error) throw error;
+      });
+    } catch (error: any) {
       console.error(`Supabase Delete [${storeName}] Failed:`, error.message);
       throw new Error(`Cloud Delete Failed: ${error.message}`);
     }
@@ -183,8 +223,12 @@ export const dbService = {
     const chunkSize = 50;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const { error } = await supabase.from(tableName).delete().in(idField, chunk);
-      if (error) {
+      try {
+        await withRetry(async () => {
+          const { error } = await supabase.from(tableName).delete().in(idField, chunk);
+          if (error) throw error;
+        });
+      } catch (error: any) {
         console.error(`Supabase Bulk Delete Error [${storeName}]:`, error);
         throw new Error(`Cloud Bulk Delete Failed: ${error.message}`);
       }
