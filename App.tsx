@@ -54,58 +54,70 @@ const App: React.FC = () => {
     if (isSyncing) return;
     setIsSyncing(true);
     setSyncError(null);
+    console.log("Starting Sync... Force Cloud:", forceCloud);
+    
     try {
       const stores = [
         'students', 'attendance', 'exams', 'results', 'annualRecords', 
         'customFields', 'holidays', 'users', 'fees', 'homework', 'announcements'
       ];
 
-      // Step 1: Force Cloud Fetch for the "Source of Truth"
       if (forceCloud) {
         const fetchResults = await Promise.allSettled(stores.map(s => dbService.getAll(s)));
         
         const failedStores = fetchResults
-          .map((res, i) => res.status === 'rejected' ? stores[i] : null)
+          .map((res, i) => res.status === 'rejected' || (res.status === 'fulfilled' && !res.value) ? stores[i] : null)
           .filter(Boolean);
         
         if (failedStores.length > 0) {
-          setSyncError(`Cloud sync failed for: ${failedStores.join(', ')}`);
+          const msg = `Cloud sync failed for: ${failedStores.join(', ')}. Check internet or run Repair SQL.`;
+          setSyncError(msg);
+          console.error(msg);
         }
 
-        const getVal = (idx: number, fallback: any[] = []) => 
-          fetchResults[idx].status === 'fulfilled' ? (fetchResults[idx] as PromiseFulfilledResult<any>).value : fallback;
+        const getVal = (idx: number, fallback: any[] = []) => {
+          const res = fetchResults[idx];
+          if (res.status === 'fulfilled' && res.value) return res.value;
+          return fallback;
+        };
 
-        if (fetchResults[0].status === 'fulfilled') setStudents(getVal(0));
-        if (fetchResults[1].status === 'fulfilled') setAttendance(getVal(1));
-        if (fetchResults[2].status === 'fulfilled') setExams(getVal(2));
-        if (fetchResults[3].status === 'fulfilled') setResults(getVal(3));
-        if (fetchResults[4].status === 'fulfilled') setAnnualRecords(getVal(4));
-        if (fetchResults[5].status === 'fulfilled') setCustomFieldDefs(getVal(5));
-        if (fetchResults[6].status === 'fulfilled') setHolidays(getVal(6));
+        // Update states with fetched data
+        const fetchedStudents = getVal(0);
+        setStudents(fetchedStudents);
+        console.log(`Synced ${fetchedStudents.length} students from cloud.`);
+
+        setAttendance(getVal(1));
+        setExams(getVal(2));
+        setResults(getVal(3));
+        setAnnualRecords(getVal(4));
+        setCustomFieldDefs(getVal(5));
+        setHolidays(getVal(6));
+        
         const fetchedUsers = getVal(7);
         setUsers(fetchedUsers.length > 0 ? fetchedUsers : [{ id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'headmaster' }]);
-        if (fetchResults[8].status === 'fulfilled') setFees(getVal(8));
-        if (fetchResults[9].status === 'fulfilled') setHomework(getVal(9));
-        if (fetchResults[10].status === 'fulfilled') setAnnouncements(getVal(10));
+        
+        setFees(getVal(8));
+        setHomework(getVal(9));
+        setAnnouncements(getVal(10));
       } else {
-        // Fallback to local only if cloud is explicitly not requested
         const localData = await Promise.all(stores.map(s => dbService.getLocal(s)));
-        if (localData[0].length) setStudents(localData[0]);
-        if (localData[1].length) setAttendance(localData[1]);
-        if (localData[2].length) setExams(localData[2]);
-        if (localData[3].length) setResults(localData[3]);
-        if (localData[4].length) setAnnualRecords(localData[4]);
-        if (localData[5].length) setCustomFieldDefs(localData[5]);
-        if (localData[6].length) setHolidays(localData[6]);
+        setStudents(localData[0]);
+        setAttendance(localData[1]);
+        setExams(localData[2]);
+        setResults(localData[3]);
+        setAnnualRecords(localData[4]);
+        setCustomFieldDefs(localData[5]);
+        setHolidays(localData[6]);
         setUsers(localData[7].length ? localData[7] : [{ id: 'admin', username: 'admin', password: 'admin123', name: 'Administrator', role: 'headmaster' }]);
-        if (localData[8].length) setFees(localData[8]);
-        if (localData[9].length) setHomework(localData[9]);
-        if (localData[10].length) setAnnouncements(localData[10]);
+        setFees(localData[8]);
+        setHomework(localData[9]);
+        setAnnouncements(localData[10]);
       }
       
       isInitialSyncDone.current = true;
-    } catch (err) {
-      console.warn("Sync Process Interrupted:", err);
+    } catch (err: any) {
+      console.error("Sync Process Error:", err);
+      setSyncError(`Sync Error: ${err.message || 'Unknown network error'}`);
     } finally {
       setIsSyncing(false);
       setIsLoaded(true); 
@@ -305,9 +317,12 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
                {syncError && (
-                 <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-[10px] font-black text-rose-600 uppercase animate-pulse">
-                   <WifiOff size={14} /> Cloud Offline
-                 </div>
+                 <button 
+                   onClick={() => alert(syncError)}
+                   className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-[10px] font-black text-rose-600 uppercase animate-pulse"
+                 >
+                   <WifiOff size={14} /> <span className="hidden sm:inline">Cloud Offline</span><span className="sm:hidden">Error</span>
+                 </button>
                )}
                {!syncError && !isSyncing && (
                  <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] font-black text-emerald-600 uppercase">

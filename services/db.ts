@@ -92,13 +92,18 @@ export const dbService = {
     const tableName = TABLE_MAP[storeName];
 
     try {
+      console.log(`[Sync] Fetching ${storeName} from cloud...`);
       const data = await withRetry(async () => 
         await withTimeout(supabase.from(tableName).select('*'), 20000)
       );
       
-      if (data.error) throw data.error;
+      if (data.error) {
+        console.error(`[Sync] Supabase Error for ${storeName}:`, data.error);
+        throw data.error;
+      }
       
       if (data.data && Array.isArray(data.data)) {
+        console.log(`[Sync] Received ${data.data.length} items for ${storeName}. Updating local cache...`);
         const tx = db.transaction(storeName, 'readwrite');
         await tx.store.clear();
         for (const item of data.data) {
@@ -106,12 +111,16 @@ export const dbService = {
         }
         await tx.done;
         return data.data;
+      } else {
+        console.warn(`[Sync] Received no data for ${storeName}.`);
       }
     } catch (err: any) {
-      console.warn(`Supabase Sync [${storeName}] Failed:`, err.message || err);
+      console.warn(`[Sync] Supabase Sync [${storeName}] Failed:`, err.message || err);
     }
 
-    return db.getAll(storeName);
+    const localData = await db.getAll(storeName);
+    console.log(`[Sync] Returning ${localData.length} local items for ${storeName}.`);
+    return localData;
   },
 
   async verifyCloudUser(username: string, pass: string) {

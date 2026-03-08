@@ -183,6 +183,14 @@ NOTIFY pgrst, 'reload schema';
                     <p className="text-xs text-indigo-100 leading-relaxed">
                         To allow users to log in from <strong>any device</strong>, Supabase needs the full table structure and indices. This script ensures every staff member and student can access the system globally.
                     </p>
+                    <div className="bg-amber-400/20 border border-amber-400/30 p-3 rounded-lg">
+                        <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                            <Smartphone size={14} /> Mobile Sync Fix
+                        </p>
+                        <p className="text-[10px] text-amber-100 mt-1 leading-relaxed">
+                            If mobile devices show 0 students, run this script to disable <strong>Row Level Security (RLS)</strong>.
+                        </p>
+                    </div>
                 </div>
                 <div className="relative">
                     <pre className="bg-black/40 p-4 rounded-xl text-[10px] font-mono overflow-x-auto max-h-[300px] text-emerald-400 border border-white/5">
