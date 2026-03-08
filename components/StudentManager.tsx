@@ -412,16 +412,21 @@ const StudentManager: React.FC<StudentManagerProps> = ({
         });
 
         if (importedStudents.length > 0) {
-          // 1. Update Local State
+          // 1. Update Local State (Immediate)
           setStudents(prev => [...prev, ...importedStudents]);
           setUsers(prev => [...prev, ...newUsers]);
+          showToast(`${importedStudents.length} Students Imported Locally!`, "success");
           
-          // 2. Sync to Cloud
-          showToast(`Uploading ${importedStudents.length} profiles...`, "info");
-          await dbService.putAll('students', importedStudents);
-          await dbService.putAll('users', newUsers);
-          
-          showToast(`${importedStudents.length} Students Imported & Synced!`, "success");
+          // 2. Sync to Cloud (Background)
+          try {
+            showToast(`Syncing ${importedStudents.length} profiles to cloud...`, "info");
+            await dbService.putAll('students', importedStudents);
+            await dbService.putAll('users', newUsers);
+            showToast("Cloud Sync Complete!", "success");
+          } catch (syncErr: any) {
+            console.error("Background Cloud Sync Failed:", syncErr);
+            showToast(`Cloud Sync Delayed: ${syncErr.message}. You can manually sync later from the System tab.`, "error");
+          }
         } else {
           showToast("No valid student records found in file", "error");
         }
