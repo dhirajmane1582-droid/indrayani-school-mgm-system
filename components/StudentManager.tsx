@@ -449,25 +449,34 @@ const StudentManager: React.FC<StudentManagerProps> = ({
   };
 
   const handleRemoveStudent = async (student: Student) => {
-    if (window.confirm(`Are you sure you want to remove ${student.name}? This will delete their login and all academic data. The username "${users.find(u => u.linkedStudentId === student.id)?.username || 'N/A'}" will be freed immediately.`)) {
-      setIsSyncing(true);
+    if (window.confirm(`Are you sure you want to remove ${student.name}? This will delete their login and all academic data.`)) {
+      // 1. Optimistic UI Update (Immediate)
+      const studentUser = users.find(u => u.linkedStudentId === student.id);
+      
+      setStudents(prev => prev.filter(s => s.id !== student.id));
+      if (studentUser) {
+        setUsers(prev => prev.filter(u => u.id !== studentUser.id));
+      }
+      
+      showToast("Removing student...", "info");
+
+      // 2. Background Cloud Sync
       try {
-          const studentUser = users.find(u => u.linkedStudentId === student.id);
+          // Run deletions in parallel for speed
+          const deletePromises = [
+            dbService.delete('students', student.id),
+            dbService.delete('annualRecords', student.id)
+          ];
+          
           if (studentUser) {
-              await dbService.delete('users', studentUser.id);
-              setUsers(prev => prev.filter(u => u.id !== studentUser.id));
+            deletePromises.push(dbService.delete('users', studentUser.id));
           }
-          
-          // Delete related records from local DB (Supabase handles cascade)
-          await dbService.delete('students', student.id);
-          await dbService.delete('annualRecords', student.id);
-          
-          setStudents(prev => prev.filter(s => s.id !== student.id));
-          showToast("Student & Credentials Removed", "info");
+
+          await Promise.all(deletePromises);
+          showToast("Student deleted from cloud", "success");
       } catch (err: any) {
-          alert(`Error deleting student: ${err.message}.`);
-      } finally {
-          setIsSyncing(false);
+          console.error("Background delete failed:", err);
+          showToast(`Cloud sync delayed: ${err.message}. Data is removed locally.`, "error");
       }
     }
   };

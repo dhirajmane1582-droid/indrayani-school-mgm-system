@@ -224,19 +224,24 @@ export const dbService = {
     }
     await tx.done;
 
-    // 2. Cloud Delete (in chunks)
+    // 2. Cloud Delete (in parallel chunks)
     const chunkSize = 50;
+    const chunkPromises = [];
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      try {
-        await withRetry(async () => {
+      chunkPromises.push(
+        withRetry(async () => {
           const { error } = await supabase.from(tableName).delete().in(idField, chunk);
           if (error) throw error;
-        });
-      } catch (error: any) {
-        console.error(`Supabase Bulk Delete Error [${storeName}]:`, error);
-        throw new Error(`Cloud Bulk Delete Failed: ${error.message}`);
-      }
+        })
+      );
+    }
+    
+    try {
+      await Promise.all(chunkPromises);
+    } catch (error: any) {
+      console.error(`Supabase Bulk Delete Error [${storeName}]:`, error);
+      throw new Error(`Cloud Bulk Delete Failed: ${error.message}`);
     }
   },
 
