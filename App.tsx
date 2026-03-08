@@ -15,7 +15,7 @@ import StudentDashboard from './components/StudentDashboard';
 import StudentManager from './components/StudentManager';
 import SystemManager from './components/SystemManager';
 import { dbService } from './services/db';
-import { CalendarCheck, GraduationCap, FileBadge, LogOut, IndianRupee, Shield, BookOpen, Bell, Layers, Home, ChevronRight, Menu, X, User as UserIcon, TrendingUp, Loader2, Database, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { CalendarCheck, GraduationCap, FileBadge, LogOut, IndianRupee, Shield, BookOpen, Bell, Layers, Home, ChevronRight, Menu, X, User as UserIcon, TrendingUp, Loader2, Database, Wifi, WifiOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -156,15 +156,16 @@ const App: React.FC = () => {
         'customFields', 'holidays', 'users', 'fees', 'homework', 'announcements'
       ];
       
-      for (const store of stores) {
-        if (data[store] && Array.isArray(data[store])) {
-          await dbService.putAll(store, data[store]);
-        } else if (store === 'annualRecords' && data[store]) {
-          // annualRecords is an object or array depending on version
+      const importPromises = stores.map(async (store) => {
+        if (data[store]) {
           const records = Array.isArray(data[store]) ? data[store] : Object.values(data[store]);
-          await dbService.putAll(store, records);
+          if (records.length > 0) {
+            await dbService.putAll(store, records);
+          }
         }
-      }
+      });
+      
+      await Promise.all(importPromises);
       
       await handleSync(true);
     } catch (err: any) {
@@ -183,12 +184,14 @@ const App: React.FC = () => {
         'customFields', 'holidays', 'users', 'fees', 'homework', 'announcements'
       ];
       
-      for (const store of stores) {
+      const pushPromises = stores.map(async (store) => {
         const localData = await dbService.getLocal(store);
         if (localData && localData.length > 0) {
           await dbService.putAll(store, localData);
         }
-      }
+      });
+      
+      await Promise.all(pushPromises);
       // Refresh local state from the newly pushed cloud data
       await handleSync(true);
     } catch (err: any) {

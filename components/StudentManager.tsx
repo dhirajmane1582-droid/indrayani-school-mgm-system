@@ -129,8 +129,10 @@ const StudentManager: React.FC<StudentManagerProps> = ({
       setIsSyncing(true);
       setTabError(null);
       try {
-          await dbService.putAll('students', students);
-          await dbService.putAll('users', users);
+          await Promise.all([
+            dbService.putAll('students', students),
+            dbService.putAll('users', users)
+          ]);
           showToast("Cloud Synchronized Successfully", "success");
       } catch (e: any) {
           setTabError(`Cloud Sync Failed: ${e.message || 'Check connection or run Repair SQL'}`);
@@ -420,8 +422,10 @@ const StudentManager: React.FC<StudentManagerProps> = ({
           // 2. Sync to Cloud (Background)
           try {
             showToast(`Syncing ${importedStudents.length} profiles to cloud...`, "info");
-            await dbService.putAll('students', importedStudents);
-            await dbService.putAll('users', newUsers);
+            await Promise.all([
+              dbService.putAll('students', importedStudents),
+              dbService.putAll('users', newUsers)
+            ]);
             showToast("Cloud Sync Complete!", "success");
           } catch (syncErr: any) {
             console.error("Background Cloud Sync Failed:", syncErr);

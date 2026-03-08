@@ -179,26 +179,28 @@ export const dbService = {
     }
     await tx.done;
 
-    // Even smaller chunks for maximum reliability on unstable networks
+    // Larger chunks for better performance on modern connections
     const isDataHeavy = ['annualRecords', 'results', 'students', 'users'].includes(storeName);
-    const chunkSize = isDataHeavy ? 10 : 25;
+    const chunkSize = isDataHeavy ? 50 : 100;
 
+    const chunkPromises = [];
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
-        try {
-          // Add a tiny delay between chunks to prevent browser request throttling
-          if (i > 0) await new Promise(r => setTimeout(r, 500));
-
-          await withRetry(async () => {
+        chunkPromises.push(
+          withRetry(async () => {
             const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });
             if (error) throw error;
-          }, 7, 2000); // More retries (7) and longer initial delay (2s)
-        } catch (error: any) {
-          console.error(`Supabase Chunk Error [${storeName}]:`, error);
-          const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('Sync Timeout');
-          const helpMsg = isNetwork ? "Check internet connection or disable AdBlockers." : "Run 'Repair SQL' in System tab.";
-          throw new Error(`Cloud Bulk Upload Failed at chunk ${Math.floor(i/chunkSize) + 1}: ${error.message}. ${helpMsg}`);
-        }
+          }, 5, 1000)
+        );
+    }
+    
+    try {
+      await Promise.all(chunkPromises);
+    } catch (error: any) {
+      console.error(`Supabase Bulk Error [${storeName}]:`, error);
+      const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('Sync Timeout');
+      const helpMsg = isNetwork ? "Check internet connection." : "Run 'Repair SQL' in System tab.";
+      throw new Error(`Cloud Bulk Upload Failed: ${error.message}. ${helpMsg}`);
     }
   },
 
