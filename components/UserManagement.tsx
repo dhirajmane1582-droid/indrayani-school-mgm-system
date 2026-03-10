@@ -123,10 +123,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
     }
   };
 
-  const getStudentName = (id?: string) => {
-      if (!id) return '';
-      const s = students.find(stud => stud.id === id);
-      return s ? `${s.name} (${s.className})` : 'Unknown Student';
+  const getStudentName = (user: User) => {
+      if (user.role !== 'student' || !user.linkedStudentId) return '';
+      const s = students.find(stud => stud.id === user.linkedStudentId);
+      if (s) return `${s.name} (${s.className})`;
+      
+      // Fallback: If student record is missing, use the name from the user record
+      return `${user.name} (Profile Missing)`;
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -234,7 +237,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                       <td className="px-6 py-4">
                         <div className="font-black text-slate-900 text-sm uppercase">{user.name}</div>
                         {user.role === 'student' && (
-                          <div className="text-[10px] text-slate-400 font-bold mt-0.5">{getStudentName(user.linkedStudentId)}</div>
+                          <div className="text-[10px] text-slate-400 font-bold mt-0.5">{getStudentName(user)}</div>
                         )}
                       </td>
                       <td className="px-6 py-4">

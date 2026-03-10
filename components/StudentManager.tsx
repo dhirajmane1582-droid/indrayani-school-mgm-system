@@ -177,10 +177,10 @@ const StudentManager: React.FC<StudentManagerProps> = ({
   const generateCredentials = (student: Student, allUsers: User[]) => {
     const nameParts = student.name.toLowerCase().trim().replace(/[^a-z0-9 ]/g, '').split(/\s+/);
     const firstName = nameParts[0] || 'student';
-    const fullNameJoined = nameParts.join('');
-
+    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+    
     const randomNum1 = Math.floor(100 + Math.random() * 900);
-    const username = `${fullNameJoined}${randomNum1}`;
+    const username = `${firstName}${lastName}${randomNum1}`;
 
     const randomNum2 = Math.floor(100 + Math.random() * 900);
     const password = `${firstName}${randomNum2}`;
@@ -373,12 +373,20 @@ const StudentManager: React.FC<StudentManagerProps> = ({
         const newUsers: User[] = [];
 
         jsonData.forEach((row: any) => {
-          const studentId = generateUUID();
+          const name = (row['Full Name'] || row['Name'] || '').toString().trim();
+          const rollNo = (row['Roll No'] || row['Roll'] || '').toString();
+          
+          if (!name || !rollNo) return;
+
+          // Check if student already exists to avoid duplicates
+          const existingStudent = students.find(s => s.name.toLowerCase() === name.toLowerCase() && s.rollNo === rollNo);
+          const studentId = existingStudent?.id || generateUUID();
+          
           const s: Student = {
             id: studentId,
-            name: (row['Full Name'] || row['Name'] || '').toString().trim(),
+            name,
             mothersName: (row['Mother Name'] || '').toString().trim(),
-            rollNo: (row['Roll No'] || row['Roll'] || '').toString(),
+            rollNo,
             className: normalizeClassName((row['Class'] || 'Class 1').toString()),
             medium: (row['Medium']?.toString().toLowerCase().includes('semi') ? 'Semi' : 'English'),
             religion: (row['Religion'] || '').toString().trim(),
@@ -394,8 +402,11 @@ const StudentManager: React.FC<StudentManagerProps> = ({
             customFields: {}
           };
 
-          if (s.name && s.rollNo) {
-            importedStudents.push(s);
+          importedStudents.push(s);
+          
+          // Check if user already exists for this student
+          const existingUser = users.find(u => u.linkedStudentId === studentId);
+          if (!existingUser) {
             const creds = generateCredentials(s, [...users, ...newUsers]);
             newUsers.push({
               id: generateUUID(),
@@ -410,9 +421,20 @@ const StudentManager: React.FC<StudentManagerProps> = ({
 
         if (importedStudents.length > 0) {
           // 1. Update Local State (Immediate)
-          setStudents(prev => [...prev, ...importedStudents]);
-          setUsers(prev => [...prev, ...newUsers]);
-          showToast(`${importedStudents.length} Students Imported Locally!`, "success");
+          // Use a Map to deduplicate by ID for the final state update
+          setStudents(prev => {
+            const map = new Map(prev.map(s => [s.id, s]));
+            importedStudents.forEach(s => map.set(s.id, s));
+            return Array.from(map.values());
+          });
+          
+          setUsers(prev => {
+            const map = new Map(prev.map(u => [u.id, u]));
+            newUsers.forEach(u => map.set(u.id, u));
+            return Array.from(map.values());
+          });
+          
+          showToast(`${importedStudents.length} Students Processed!`, "success");
           
           // 2. Sync to Cloud (Background)
           try {
