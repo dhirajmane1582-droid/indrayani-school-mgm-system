@@ -170,7 +170,7 @@ export const dbService = {
   async put(storeName: string, item: any) {
     const db = await initDB();
     const tableName = TABLE_MAP[storeName];
-    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
+    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : (storeName === 'users' ? 'username' : 'id');
 
     await db.put(storeName, item);
 
@@ -196,7 +196,7 @@ export const dbService = {
   async putAll(storeName: string, items: any[]) {
     const db = await initDB();
     const tableName = TABLE_MAP[storeName];
-    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
+    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : (storeName === 'users' ? 'username' : 'id');
 
     if (!items || items.length === 0) return;
 
