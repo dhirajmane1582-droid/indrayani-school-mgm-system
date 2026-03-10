@@ -203,7 +203,7 @@ NOTIFY pgrst, 'reload schema';
                         {isTesting ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                         Test Cloud Connection
                     </button>
-                    <a href="https://supabase.com/dashboard/project/tubdjcdghosxozzehuep/sql/new" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-3 bg-white text-indigo-900 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl">Open Supabase SQL Editor <ExternalLink size={14} /></a>
+                    <a href="https://supabase.com/dashboard/project/qcysnurhwppzwfghpywt/sql/new" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-3 bg-white text-indigo-900 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl">Open Supabase SQL Editor <ExternalLink size={14} /></a>
                 </div>
             </div>
         )}
