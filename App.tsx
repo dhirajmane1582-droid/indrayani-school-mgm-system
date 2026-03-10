@@ -65,14 +65,16 @@ const App: React.FC = () => {
       if (forceCloud) {
         const fetchResults = await Promise.allSettled(stores.map(s => dbService.getAll(s)));
         
+        const rejections = fetchResults.filter(res => res.status === 'rejected') as PromiseRejectedResult[];
         const failedStores = fetchResults
           .map((res, i) => res.status === 'rejected' || (res.status === 'fulfilled' && !res.value) ? stores[i] : null)
           .filter(Boolean);
         
         if (failedStores.length > 0) {
-          const msg = `Cloud sync failed for: ${failedStores.join(', ')}. Check internet or run Repair SQL.`;
+          const firstError = rejections[0]?.reason?.message || 'Unknown error';
+          const msg = `Cloud sync failed for ${failedStores.join(', ')}. Error: ${firstError}. Please run 'Repair SQL' in the System tab.`;
           setSyncError(msg);
-          console.error(msg);
+          console.error(msg, rejections);
         }
 
         const getVal = (idx: number, fallback: any[] = []) => {

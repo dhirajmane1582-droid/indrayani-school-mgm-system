@@ -141,7 +141,9 @@ export const dbService = {
         console.warn(`[Sync] Received no data for ${storeName}.`);
       }
     } catch (err: any) {
-      console.warn(`[Sync] Supabase Sync [${storeName}] Failed:`, err.message || err);
+      console.error(`[Sync] Supabase Sync [${storeName}] Failed:`, err.message || err);
+      // Re-throw to allow handleSync to catch and display the error
+      throw err;
     }
 
     const localData = await db.getAll(storeName);
@@ -170,6 +172,11 @@ export const dbService = {
   async put(storeName: string, item: any) {
     const db = await initDB();
     const tableName = TABLE_MAP[storeName];
+    // Use 'id' for most tables, 'studentId' for annualRecords.
+    // For 'users', we use 'id' to allow updating usernames, but we must ensure 'id' exists.
+    if (!item.id && storeName !== 'annualRecords') {
+      item.id = generateUUID();
+    }
     const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
 
     await db.put(storeName, item);
@@ -185,11 +192,20 @@ export const dbService = {
       });
     } catch (error: any) {
       console.error(`Supabase Upsert Error [${storeName}]:`, error);
-      const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('Sync Timeout');
-      if (isNetwork) {
-          throw new Error(`Network Error: Cloud is unreachable. Please check your internet connection or disable AdBlockers.`);
+      const errMsg = error.message || 'Unknown error';
+      if (errMsg.includes('Failed to fetch') || errMsg.includes('Sync Timeout')) {
+          throw new Error(`Network Error: Cloud is unreachable. Check internet or disable AdBlockers.`);
       }
-      throw new Error(`Cloud Database Error: ${error.message}. If this persists, run 'Repair SQL' in the System tab.`);
+      if (errMsg.includes('violates foreign key constraint')) {
+          throw new Error(`Sync Error: Linked student profile not found in cloud. Try syncing Students first.`);
+      }
+      if (errMsg.includes('duplicate key value violates unique constraint')) {
+          if (storeName === 'users') {
+              throw new Error(`Sync Error: Username already exists in cloud. Please choose a unique username.`);
+          }
+          throw new Error(`Sync Error: Duplicate record detected. Run 'Repair SQL' in System tab.`);
+      }
+      throw new Error(`Cloud Database Error: ${errMsg}. If this persists, run 'Repair SQL' in System tab.`);
     }
   },
 
@@ -213,35 +229,43 @@ export const dbService = {
 
     const sanitizedItems = items.map(sanitizeForSupabase);
     
-    // Deduplicate items based on conflictColumn to prevent "duplicate key" errors within the same chunk
-    // This is critical when multiple records in the same batch have the same unique identifier (e.g. username)
+    // Deduplicate items based on conflictColumn AND unique constraints (like username for users)
     const uniqueItemsMap = new Map();
     sanitizedItems.forEach(item => {
-      const key = item[conflictColumn];
-      if (key) {
-        uniqueItemsMap.set(key, item);
+      // Primary conflict key
+      const primaryKey = item[conflictColumn];
+      // Secondary unique key for users
+      const secondaryKey = (storeName === 'users' && item.username) ? item.username.toLowerCase() : null;
+      
+      const mapKey = secondaryKey || primaryKey;
+      if (mapKey) {
+        uniqueItemsMap.set(mapKey, item);
       }
     });
     const uniqueItems = Array.from(uniqueItemsMap.values());
 
-    const chunkPromises = [];
-    for (let i = 0; i < uniqueItems.length; i += chunkSize) {
-        const chunk = uniqueItems.slice(i, i + chunkSize);
-        chunkPromises.push(
-          withRetry(async () => {
+    try {
+      // Process chunks sequentially to avoid overwhelming the connection and for better error reporting
+      for (let i = 0; i < uniqueItems.length; i += chunkSize) {
+          const chunk = uniqueItems.slice(i, i + chunkSize);
+          await withRetry(async () => {
             const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });
             if (error) throw error;
-          }, 5, 1000)
-        );
-    }
-    
-    try {
-      await Promise.all(chunkPromises);
+          }, 5, 1000);
+      }
     } catch (error: any) {
       console.error(`Supabase Bulk Error [${storeName}]:`, error);
-      const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('Sync Timeout');
-      const helpMsg = isNetwork ? "Check internet connection." : "Run 'Repair SQL' in System tab.";
-      throw new Error(`Cloud Bulk Upload Failed: ${error.message}. ${helpMsg}`);
+      const errMsg = error.message || 'Unknown error';
+      if (errMsg.includes('Failed to fetch') || errMsg.includes('Sync Timeout')) {
+          throw new Error(`Network Error: Cloud is unreachable. Check internet or disable AdBlockers.`);
+      }
+      if (errMsg.includes('duplicate key value violates unique constraint')) {
+          if (storeName === 'users') {
+              throw new Error(`Sync Error: One or more usernames already exist in cloud. Ensure all usernames are unique.`);
+          }
+          throw new Error(`Sync Error: Duplicate records detected in bulk upload. Run 'Repair SQL' in System tab.`);
+      }
+      throw new Error(`Cloud Bulk Upload Failed [${storeName}]: ${errMsg}. Run 'Repair SQL' in System tab.`);
     }
   },
 

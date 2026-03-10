@@ -60,22 +60,25 @@ const SystemManager: React.FC<SystemManagerProps> = ({ onExport, onImport, onPus
 -- 1. Ensure all tables exist with correct structure
 CREATE TABLE IF NOT EXISTS students (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, "rollNo" TEXT, "className" TEXT, medium TEXT, dob DATE, "placeOfBirth" TEXT, address TEXT, phone TEXT, "alternatePhone" TEXT, "aadharNo" TEXT, "apaarId" TEXT, "penNo" TEXT, caste TEXT, religion TEXT, "mothersName" TEXT, "customFields" JSONB DEFAULT '{}'::jsonb);
 
--- Ensure all columns exist (in case table was created with older version)
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "rollNo" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "className" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS medium TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS dob DATE;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "placeOfBirth" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "alternatePhone" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "aadharNo" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "apaarId" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "penNo" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS caste TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS religion TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "mothersName" TEXT;
-ALTER TABLE students ADD COLUMN IF NOT EXISTS "customFields" JSONB DEFAULT '{}'::jsonb;
+-- Ensure all columns exist for students
+DO $$ 
+BEGIN 
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "rollNo" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "className" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS medium TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS dob DATE;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "placeOfBirth" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS phone TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "alternatePhone" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "aadharNo" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "apaarId" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "penNo" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS caste TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS religion TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "mothersName" TEXT;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS "customFields" JSONB DEFAULT '{}'::jsonb;
+END $$;
 
 CREATE TABLE IF NOT EXISTS attendance (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "studentId" UUID REFERENCES students(id) ON DELETE CASCADE, present BOOLEAN DEFAULT true);
 CREATE TABLE IF NOT EXISTS exams (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, type TEXT, date DATE, "className" TEXT, published BOOLEAN DEFAULT false, "customMaxMarks" JSONB DEFAULT '{}'::jsonb, "customEvaluationTypes" JSONB DEFAULT '{}'::jsonb, "activeSubjectIds" TEXT[] DEFAULT '{}', "customSubjects" JSONB DEFAULT '[]'::jsonb, timetable JSONB DEFAULT '[]'::jsonb);
@@ -87,6 +90,16 @@ CREATE TABLE IF NOT EXISTS fees (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
 CREATE TABLE IF NOT EXISTS holidays (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), date DATE NOT NULL, "endDate" DATE, name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS custom_field_defs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), label TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, "linkedStudentId" UUID REFERENCES students(id) ON DELETE SET NULL);
+
+-- Ensure users table has id column if it was created with username as PK before
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='id') THEN
+        ALTER TABLE users ADD COLUMN id UUID DEFAULT gen_random_uuid();
+        ALTER TABLE users DROP CONSTRAINT IF EXISTS users_pkey;
+        ALTER TABLE users ADD PRIMARY KEY (id);
+    END IF;
+END $$;
 
 -- 2. Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_users_username_lookup ON users (LOWER(username));
