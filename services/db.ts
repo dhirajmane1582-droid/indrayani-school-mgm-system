@@ -19,6 +19,32 @@ const TABLE_MAP: Record<string, string> = {
   'announcements': 'announcements'
 };
 
+const sanitizeForSupabase = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForSupabase);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const newObj: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const value = obj[key];
+        // Convert empty strings to null for Supabase compatibility (especially for DATE types)
+        if (value === '') {
+          newObj[key] = null;
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          // For JSONB columns, we might want to keep empty strings inside the JSON, 
+          // but usually it's safer to just pass the object as is if it's not a root level empty string.
+          newObj[key] = value;
+        } else {
+          newObj[key] = sanitizeForSupabase(value);
+        }
+      }
+    }
+    return newObj;
+  }
+  return obj === '' ? null : obj;
+};
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 export const initDB = (): Promise<IDBPDatabase> => {
@@ -148,11 +174,13 @@ export const dbService = {
 
     await db.put(storeName, item);
 
+    const sanitizedItem = sanitizeForSupabase(item);
+
     try {
       await withRetry(async () => {
         const { error } = await supabase
           .from(tableName)
-          .upsert(item, { onConflict: conflictColumn });
+          .upsert(sanitizedItem, { onConflict: conflictColumn });
         if (error) throw error;
       });
     } catch (error: any) {
@@ -183,9 +211,11 @@ export const dbService = {
     const isDataHeavy = ['annualRecords', 'results', 'students', 'users'].includes(storeName);
     const chunkSize = isDataHeavy ? 50 : 100;
 
+    const sanitizedItems = items.map(sanitizeForSupabase);
+
     const chunkPromises = [];
-    for (let i = 0; i < items.length; i += chunkSize) {
-        const chunk = items.slice(i, i + chunkSize);
+    for (let i = 0; i < sanitizedItems.length; i += chunkSize) {
+        const chunk = sanitizedItems.slice(i, i + chunkSize);
         chunkPromises.push(
           withRetry(async () => {
             const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });
