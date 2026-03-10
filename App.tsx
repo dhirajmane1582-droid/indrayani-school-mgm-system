@@ -245,7 +245,7 @@ const App: React.FC = () => {
   }[currentUser.role];
 
   if (currentUser.role === 'student') {
-    return <StudentDashboard currentUser={currentUser} onLogout={handleLogout} students={students} homework={homework} exams={exams} results={results} attendance={attendance} announcements={announcements} annualRecords={annualRecords} holidays={holidays} onRefresh={() => handleSync(true)} isSyncing={isSyncing} />;
+    return <StudentDashboard currentUser={currentUser} onLogout={handleLogout} students={students} homework={homework} exams={exams} results={results} attendance={attendance} announcements={announcements} fees={fees} annualRecords={annualRecords} holidays={holidays} onRefresh={() => handleSync(true)} isSyncing={isSyncing} />;
   }
 
   const dashboardItems = [

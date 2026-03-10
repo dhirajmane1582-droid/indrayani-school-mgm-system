@@ -175,22 +175,15 @@ const StudentManager: React.FC<StudentManagerProps> = ({
   };
 
   const generateCredentials = (student: Student, allUsers: User[]) => {
-    const dobRaw = student.dob || '01012010';
-    const dobParts = dobRaw.split('-'); 
-    const dobStr = dobParts.length === 3 ? `${dobParts[2]}${dobParts[1]}${dobParts[0]}` : dobRaw.replace(/-/g, '');
     const nameParts = student.name.toLowerCase().trim().replace(/[^a-z0-9 ]/g, '').split(/\s+/);
     const firstName = nameParts[0] || 'student';
-    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+    const fullNameJoined = nameParts.join('');
 
-    let username = `${firstName}${dobStr}`;
-    const exists = allUsers.some(u => u.username === username && u.linkedStudentId !== student.id);
-    if (exists && lastName) {
-        username = `${firstName}${lastName}${dobStr}`;
-    }
+    const randomNum1 = Math.floor(100 + Math.random() * 900);
+    const username = `${fullNameJoined}${randomNum1}`;
 
-    const initials = nameParts.map(p => p[0]).join('') || 'stu';
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    const password = `${initials}${randomNum}`;
+    const randomNum2 = Math.floor(100 + Math.random() * 900);
+    const password = `${firstName}${randomNum2}`;
     
     return { username, password };
   };
@@ -263,13 +256,15 @@ const StudentManager: React.FC<StudentManagerProps> = ({
           customFields: formData.customFields || {}
         };
 
-        const { username, password } = generateCredentials(newStudent, users);
-        
         const existingUser = users.find(u => u.linkedStudentId === studentId);
+        
+        // Only generate new credentials if it's a new student or if the user doesn't exist
+        const { username: generatedUsername, password: generatedPassword } = generateCredentials(newStudent, users);
+        
         const userPayload: User = { 
           id: existingUser?.id || generateUUID(),
-          username: (formData.customId && formData.customId.trim() !== '') ? formData.customId.trim() : (existingUser?.username || username),
-          password: (formData.customPass && formData.customPass.trim() !== '') ? formData.customPass.trim() : (existingUser?.password || password),
+          username: (formData.customId && formData.customId.trim() !== '') ? formData.customId.trim() : (existingUser?.username || generatedUsername),
+          password: (formData.customPass && formData.customPass.trim() !== '') ? formData.customPass.trim() : (existingUser?.password || generatedPassword),
           name: newStudent.name,
           role: 'student' as const,
           linkedStudentId: studentId
@@ -533,8 +528,9 @@ const StudentManager: React.FC<StudentManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1">
-            <button onClick={handleManualSync} disabled={isSyncing} className={`p-2.5 rounded-xl border transition-all shadow-sm ${isSyncing ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-indigo-600 border-slate-400 hover:bg-indigo-50'}`} title="Push All to Cloud">
-                <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
+            <button onClick={handleManualSync} disabled={isSyncing} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all shadow-sm ${isSyncing ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-indigo-600 border-slate-400 hover:bg-indigo-50 hover:border-indigo-300'}`} title="Push All Students & Logins to Cloud">
+                <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Sync All</span>
             </button>
             <button onClick={downloadImportTemplate} className="p-2.5 bg-slate-50 text-slate-600 rounded-xl border border-slate-300 hover:bg-slate-100 transition-colors shadow-sm" title="Import Template"><FileDown size={20} /></button>
             <button onClick={() => fileInputRef.current?.click()} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-400 text-slate-800 rounded-xl hover:bg-slate-50 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"><Download size={16} /> Import</button>
@@ -714,12 +710,34 @@ const StudentManager: React.FC<StudentManagerProps> = ({
                             </div>
                         </div>
 
-                        <button 
-                           onClick={() => handleCopyCredentials(viewingCredsStudent)}
-                           className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2 mt-4"
-                        >
-                            <Copy size={14} /> Copy Full Shared Login Text
-                        </button>
+                        <div className="flex gap-2 mt-4">
+                            <button 
+                               onClick={() => handleCopyCredentials(viewingCredsStudent)}
+                               className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Copy size={14} /> Copy Details
+                            </button>
+                            <button 
+                               onClick={async () => {
+                                   if (viewingStudentUser) {
+                                       setIsSyncing(true);
+                                       try {
+                                           await dbService.put('users', viewingStudentUser);
+                                           showToast("Account Synced to Cloud", "success");
+                                       } catch (e) {
+                                           showToast("Sync Failed", "error");
+                                       } finally {
+                                           setIsSyncing(false);
+                                       }
+                                   }
+                               }}
+                               disabled={isSyncing}
+                               className="px-6 py-4 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-100 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                                Sync
+                            </button>
+                        </div>
                     </div>
 
                     <button 

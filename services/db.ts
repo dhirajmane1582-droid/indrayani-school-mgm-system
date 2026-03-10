@@ -170,7 +170,7 @@ export const dbService = {
   async put(storeName: string, item: any) {
     const db = await initDB();
     const tableName = TABLE_MAP[storeName];
-    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : (storeName === 'users' ? 'username' : 'id');
+    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
 
     await db.put(storeName, item);
 
@@ -196,7 +196,7 @@ export const dbService = {
   async putAll(storeName: string, items: any[]) {
     const db = await initDB();
     const tableName = TABLE_MAP[storeName];
-    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : (storeName === 'users' ? 'username' : 'id');
+    const conflictColumn = storeName === 'annualRecords' ? 'studentId' : 'id';
 
     if (!items || items.length === 0) return;
 
@@ -212,10 +212,21 @@ export const dbService = {
     const chunkSize = isDataHeavy ? 50 : 100;
 
     const sanitizedItems = items.map(sanitizeForSupabase);
+    
+    // Deduplicate items based on conflictColumn to prevent "duplicate key" errors within the same chunk
+    // This is critical when multiple records in the same batch have the same unique identifier (e.g. username)
+    const uniqueItemsMap = new Map();
+    sanitizedItems.forEach(item => {
+      const key = item[conflictColumn];
+      if (key) {
+        uniqueItemsMap.set(key, item);
+      }
+    });
+    const uniqueItems = Array.from(uniqueItemsMap.values());
 
     const chunkPromises = [];
-    for (let i = 0; i < sanitizedItems.length; i += chunkSize) {
-        const chunk = sanitizedItems.slice(i, i + chunkSize);
+    for (let i = 0; i < uniqueItems.length; i += chunkSize) {
+        const chunk = uniqueItems.slice(i, i + chunkSize);
         chunkPromises.push(
           withRetry(async () => {
             const { error } = await supabase.from(tableName).upsert(chunk, { onConflict: conflictColumn });

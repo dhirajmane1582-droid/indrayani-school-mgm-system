@@ -168,8 +168,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, curren
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-slate-900"
                 />
              </div>
-             <button onClick={handleManualSync} disabled={isSyncing} className={`p-2.5 rounded-xl border transition-all ${isSyncing ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-slate-400 border-slate-300 hover:text-indigo-600 hover:bg-indigo-50'}`} title="Sync to Cloud">
-                <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
+             <button onClick={handleManualSync} disabled={isSyncing} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all shadow-sm ${isSyncing ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-white text-indigo-600 border-slate-300 hover:bg-indigo-50 hover:border-indigo-300'}`} title="Push All Credentials to Cloud">
+                <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Sync All Credentials</span>
              </button>
              <button
                onClick={() => setIsModalOpen(true)}

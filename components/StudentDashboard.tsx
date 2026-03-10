@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { User, Student, Homework, Exam, StudentResult, AttendanceRecord, Announcement, AnnualRecord, Holiday, getSubjectsForClass } from '../types';
-import { BookOpen, GraduationCap, Bell, UserCheck, CalendarCheck, FileBadge, LogOut, Download, X, RefreshCw, Loader2, Eye, ChevronDown, UserRound, MapPin, Phone, Fingerprint, IdCard, Hash, MapPinned, MoonStar, Users2 } from 'lucide-react';
+import { User, Student, Homework, Exam, StudentResult, AttendanceRecord, Announcement, AnnualRecord, Holiday, FeeRecord, getSubjectsForClass } from '../types';
+import { BookOpen, GraduationCap, Bell, UserCheck, CalendarCheck, FileBadge, LogOut, Download, X, RefreshCw, Loader2, Eye, ChevronDown, UserRound, MapPin, Phone, Fingerprint, IdCard, Hash, MapPinned, MoonStar, Users2, IndianRupee } from 'lucide-react';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -14,6 +14,7 @@ interface StudentDashboardProps {
   results: StudentResult[];
   attendance: AttendanceRecord[];
   announcements: Announcement[];
+  fees: FeeRecord[];
   annualRecords?: AnnualRecord[];
   holidays?: Holiday[];
   onRefresh?: () => void;
@@ -150,9 +151,9 @@ const PDF_STYLES_STRETCH_COLOR = `
 `;
 
 const StudentDashboard: React.FC<StudentDashboardProps> = ({
-  currentUser, onLogout, students, homework, exams, results, attendance, announcements, annualRecords = [], holidays = [], onRefresh, isSyncing = false
+  currentUser, onLogout, students, homework, exams, results, attendance, announcements, fees, annualRecords = [], holidays = [], onRefresh, isSyncing = false
 }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'homework' | 'exams' | 'results' | 'attendance' | 'notices' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'homework' | 'exams' | 'results' | 'attendance' | 'notices' | 'profile' | 'fees'>('home');
   const [isDownloading, setIsDownloading] = useState(false);
   const [expandedExamId, setExpandedExamId] = useState<string | null>(null);
 
@@ -174,6 +175,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     }
   }, [activeTab]);
 
+  const [seenFeeIds, setSeenFeeIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem(`seen_fee_${currentUser.id}`);
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
+  const [seenExamIds, setSeenExamIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem(`seen_exam_${currentUser.id}`);
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
   const [seenHomeworkIds, setSeenHomeworkIds] = useState<Set<string>>(() => {
     const saved = localStorage.getItem(`seen_hw_${currentUser.id}`);
     return saved ? new Set(JSON.parse(saved)) : new Set();
@@ -188,6 +199,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     const saved = localStorage.getItem(`seen_notice_${currentUser.id}`);
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
+
+  useEffect(() => {
+    localStorage.setItem(`seen_fee_${currentUser.id}`, JSON.stringify(Array.from(seenFeeIds)));
+  }, [seenFeeIds, currentUser.id]);
+
+  useEffect(() => {
+    localStorage.setItem(`seen_exam_${currentUser.id}`, JSON.stringify(Array.from(seenExamIds)));
+  }, [seenExamIds, currentUser.id]);
 
   useEffect(() => {
     localStorage.setItem(`seen_hw_${currentUser.id}`, JSON.stringify(Array.from(seenHomeworkIds)));
@@ -216,15 +235,41 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return announcements.filter(a => a.targetClass === 'All' || a.targetClass === student.className);
   }, [announcements, student]);
 
+  const examsForClass = useMemo(() => {
+    if (!student) return [];
+    return exams.filter(e => e.className === student.className && e.published !== false);
+  }, [exams, student]);
+
+  const feesForStudent = useMemo(() => {
+    if (!student) return [];
+    return fees.filter(f => f.studentId === student.id);
+  }, [fees, student]);
+
   const hasNewHomework = useMemo(() => homeworkForClass.some(h => !seenHomeworkIds.has(h.id)), [homeworkForClass, seenHomeworkIds]);
   const hasNewResults = useMemo(() => resultsForStudent.some(r => !seenResultIds.has(r.id)), [resultsForStudent, seenResultIds]);
   const hasNewNotices = useMemo(() => noticesForStudent.some(a => !seenNoticeIds.has(a.id)), [noticesForStudent, seenNoticeIds]);
+  const hasNewExams = useMemo(() => examsForClass.some(e => !seenExamIds.has(e.id)), [examsForClass, seenExamIds]);
+  const hasNewFees = useMemo(() => feesForStudent.some(f => !seenFeeIds.has(f.id)), [feesForStudent, seenFeeIds]);
 
   const handleOpenHomework = () => {
     setActiveTab('homework');
     const newSeen = new Set(seenHomeworkIds);
     homeworkForClass.forEach(h => newSeen.add(h.id));
     setSeenHomeworkIds(newSeen);
+  };
+
+  const handleOpenExams = () => {
+    setActiveTab('exams');
+    const newSeen = new Set(seenExamIds);
+    examsForClass.forEach(e => newSeen.add(e.id));
+    setSeenExamIds(newSeen);
+  };
+
+  const handleOpenFees = () => {
+    setActiveTab('fees');
+    const newSeen = new Set(seenFeeIds);
+    feesForStudent.forEach(f => newSeen.add(f.id));
+    setSeenFeeIds(newSeen);
   };
 
   const handleOpenResults = () => {
@@ -441,41 +486,58 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <div className="flex-1 pt-0.5">
                           <div className="flex items-center gap-2 mb-1">
                               <h3 className="text-lg font-bold text-slate-800">My Homework</h3>
-                              {hasNewHomework && <span className="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">(NEW)</span>}
+                              {hasNewHomework && <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">NEW</span>}
                           </div>
-                          <p className={`text-xs font-bold ${hasNewHomework ? 'text-rose-500' : 'text-slate-400'}`}>{hasNewHomework ? 'New homework posted!' : 'No new updates'}</p>
+                          <p className={`text-xs font-bold ${hasNewHomework ? 'text-red-600' : 'text-slate-400'}`}>{hasNewHomework ? 'New homework posted!' : 'No new updates'}</p>
                       </div>
                   </button>
 
-                  <button onClick={() => setActiveTab('exams')} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
+                  <button onClick={handleOpenExams} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
                       <div className="w-12 h-12 bg-purple-600 rounded-2xl flex items-center justify-center text-white shrink-0"><CalendarCheck size={24}/></div>
-                      <div className="flex-1 pt-0.5"><h3 className="text-lg font-bold text-slate-800 mb-1">Exam Schedule</h3><p className="text-slate-500 font-medium text-xs">Upcoming tests</p></div>
+                      <div className="flex-1 pt-0.5">
+                          <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-bold text-slate-800 mb-1">Exam Schedule</h3>
+                              {hasNewExams && <span className="bg-purple-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">NEW</span>}
+                          </div>
+                          <p className={`text-xs font-bold ${hasNewExams ? 'text-purple-600' : 'text-slate-400'}`}>{hasNewExams ? 'New timetable published!' : 'Upcoming tests'}</p>
+                      </div>
                   </button>
 
                   <button onClick={handleOpenResults} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
-                      <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shrink-0"><FileBadge size={24}/></div>
+                      <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shrink-0"><FileBadge size={24}/></div>
                       <div className="flex-1 pt-0.5">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="text-lg font-bold text-slate-800">Report Cards</h3>
-                            {hasNewResults && <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">(NEW)</span>}
+                            {hasNewResults && <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">NEW</span>}
                           </div>
-                          <p className="text-slate-500 font-medium text-xs">Marks & Results</p>
+                          <p className={`text-xs font-bold ${hasNewResults ? 'text-emerald-600' : 'text-slate-400'}`}>{hasNewResults ? 'New results available!' : 'Marks & Results'}</p>
                       </div>
                   </button>
 
                   <button onClick={() => setActiveTab('attendance')} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
-                      <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shrink-0"><UserCheck size={24}/></div>
+                      <div className="w-12 h-12 bg-teal-600 rounded-2xl flex items-center justify-center text-white shrink-0"><UserCheck size={24}/></div>
                       <div className="flex-1 pt-0.5"><h3 className="text-lg font-bold text-slate-800 mb-1">Attendance</h3><p className="text-slate-500 font-medium text-xs">{attendancePercentage}% presence</p></div>
                   </button>
 
                   <button onClick={handleOpenNotices} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
-                      <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shrink-0"><Bell size={24}/></div>
+                      <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center text-white shrink-0"><Bell size={24}/></div>
                       <div className="flex-1 pt-0.5">
                           <div className="flex items-center gap-2 mb-1">
                               <h3 className="text-lg font-bold text-slate-800">Notice Board</h3>
-                              {hasNewNotices && <span className="bg-blue-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">(NEW)</span>}
+                              {hasNewNotices && <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">NEW</span>}
                           </div>
-                          <p className={`text-xs font-bold ${hasNewNotices ? 'text-blue-500' : 'text-slate-400'}`}>{hasNewNotices ? 'New updates posted!' : 'School updates'}</p>
+                          <p className={`text-xs font-bold ${hasNewNotices ? 'text-amber-500' : 'text-slate-400'}`}>{hasNewNotices ? 'New updates posted!' : 'School updates'}</p>
+                      </div>
+                  </button>
+
+                  <button onClick={handleOpenFees} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-md transition-all text-left flex items-start gap-5 group relative">
+                      <div className="w-12 h-12 bg-sky-600 rounded-2xl flex items-center justify-center text-white shrink-0"><IndianRupee size={24}/></div>
+                      <div className="flex-1 pt-0.5">
+                          <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-bold text-slate-800">Fee Records</h3>
+                              {hasNewFees && <span className="bg-sky-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg uppercase tracking-tight animate-pulse">NEW</span>}
+                          </div>
+                          <p className={`text-xs font-bold ${hasNewFees ? 'text-sky-600' : 'text-slate-400'}`}>{hasNewFees ? 'New payment recorded!' : 'Payment History'}</p>
                       </div>
                   </button>
 
@@ -483,6 +545,87 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shrink-0"><UserRound size={24}/></div>
                       <div className="flex-1 pt-0.5"><h3 className="text-lg font-bold text-slate-800 mb-1">Institutional Profile</h3><p className="text-slate-500 font-medium text-xs">Your Personal Records</p></div>
                   </button>
+              </div>
+          )}
+
+          {activeTab === 'exams' && (
+              <div className="space-y-8 animate-in fade-in zoom-in-95">
+                  <button onClick={() => setActiveTab('home')} className="p-2 -ml-2 text-slate-400 hover:text-slate-900 transition-colors flex items-center gap-2 text-sm font-bold uppercase tracking-widest mb-2"><X size={20}/> Close</button>
+                  <h2 className="text-2xl font-black text-slate-800">Exam Timetables</h2>
+                  
+                  {examsForClass.length === 0 ? (
+                      <div className="p-12 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-300 italic">No exam schedules published yet.</div>
+                  ) : (
+                      <div className="grid grid-cols-1 gap-6">
+                          {examsForClass.map(exam => (
+                              <div key={exam.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                                  <div className="bg-slate-900 p-6 text-white">
+                                      <div className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1">{exam.type}</div>
+                                      <h3 className="text-xl font-black uppercase tracking-tight">{exam.title}</h3>
+                                  </div>
+                                  <div className="p-0">
+                                      <table className="w-full text-left text-sm">
+                                          <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100">
+                                              <tr>
+                                                  <th className="px-6 py-3">Date</th>
+                                                  <th className="px-6 py-3">Subject</th>
+                                              </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-slate-50">
+                                              {exam.timetable?.map((entry, idx) => (
+                                                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                      <td className="px-6 py-4 font-bold text-slate-500">{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', weekday: 'short' })}</td>
+                                                      <td className="px-6 py-4 font-black text-slate-800 uppercase tracking-tight">{entry.subject}</td>
+                                                  </tr>
+                                              ))}
+                                              {(!exam.timetable || exam.timetable.length === 0) && (
+                                                  <tr><td colSpan={2} className="px-6 py-8 text-center text-slate-300 italic">Timetable not yet uploaded for this exam.</td></tr>
+                                              )}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          )}
+
+          {activeTab === 'fees' && (
+              <div className="space-y-8 animate-in fade-in zoom-in-95">
+                  <button onClick={() => setActiveTab('home')} className="p-2 -ml-2 text-slate-400 hover:text-slate-900 transition-colors flex items-center gap-2 text-sm font-bold uppercase tracking-widest mb-2"><X size={20}/> Close</button>
+                  <div className="flex justify-between items-center">
+                      <h2 className="text-2xl font-black text-slate-800">Fee Payments</h2>
+                      <div className="text-right">
+                          <div className="text-[10px] uppercase font-black text-slate-400">Total Paid</div>
+                          <div className="text-2xl font-black text-emerald-600">₹{feesForStudent.reduce((sum, f) => sum + f.amount, 0).toLocaleString()}</div>
+                      </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                      {feesForStudent.length === 0 ? (
+                          <div className="p-12 text-center text-slate-300 italic">No fee records found.</div>
+                      ) : (
+                          <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100">
+                                  <tr>
+                                      <th className="px-6 py-3">Date</th>
+                                      <th className="px-6 py-3">Remarks</th>
+                                      <th className="px-6 py-3 text-right">Amount</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                  {feesForStudent.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(fee => (
+                                      <tr key={fee.id} className="hover:bg-slate-50/50 transition-colors">
+                                          <td className="px-6 py-4 font-bold text-slate-500">{new Date(fee.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                          <td className="px-6 py-4 text-slate-600 font-medium">{fee.remarks || '-'}</td>
+                                          <td className="px-6 py-4 text-right font-black text-emerald-700">₹{fee.amount.toLocaleString()}</td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      )}
+                  </div>
               </div>
           )}
 
